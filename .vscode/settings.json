@@ -1,0 +1,8 @@
+{
+	"files.associations": {
+		"*.lang": "jai",
+		"vulkan.h": "c",
+		"typedefs.h": "c",
+		"stdio.h": "c"
+	}
+}
