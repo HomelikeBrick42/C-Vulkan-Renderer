@@ -433,8 +433,10 @@ int main(int argc, char** argv) {
 	ASSERT(presentQueue);
 
 	VkSwapchainKHR swapchain = NULL;
+	VkSurfaceFormatKHR swapchainFormat = {};
+	VkPresentModeKHR swapchainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+	VkExtent2D swapchainExtent = {};
 	{
-		VkSurfaceFormatKHR surfaceFormat = {};
 		{
 			u32 surfaceFormatCount = 0;
 			VkCall(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, NULL));
@@ -444,18 +446,17 @@ int main(int argc, char** argv) {
 			b8 found = false;
 			for (u64 i = 0; i < surfaceFormatCount; i++) {
 				if (surfaceFormats[i].format == VK_FORMAT_B8G8R8A8_SRGB && surfaceFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-					surfaceFormat = surfaceFormats[i];
+					swapchainFormat = surfaceFormats[i];
 					found = true;
 					break;
 				}
 			}
 
 			if (!found) {
-				surfaceFormat = surfaceFormats[0];
+				swapchainFormat = surfaceFormats[0];
 			}
 		}
 
-		VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR; // NOTE: This will always be available
 		{
 			u32 presentModeCount = 0;
 			VkCall(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, NULL));
@@ -464,13 +465,12 @@ int main(int argc, char** argv) {
 
 			for (u64 i = 0; i < presentModeCount; i++) {
 				if (presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
-					presentMode = presentModes[i];
+					swapchainPresentMode = presentModes[i];
 					break;
 				}
 			}
 		}
 
-		VkExtent2D swapchainExtent = {};
 		u32 imageCount = 0;
 		VkSurfaceTransformFlagBitsKHR transform = 0;
 		{
@@ -502,8 +502,8 @@ int main(int argc, char** argv) {
 			.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
 			.surface = surface,
 			.minImageCount = imageCount,
-			.imageFormat = surfaceFormat.format,
-			.imageColorSpace = surfaceFormat.colorSpace,
+			.imageFormat = swapchainFormat.format,
+			.imageColorSpace = swapchainFormat.colorSpace,
 			.imageExtent = swapchainExtent,
 			.imageArrayLayers = 1,
 			.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
@@ -512,7 +512,7 @@ int main(int argc, char** argv) {
 			.pQueueFamilyIndices = (u32[2]){ graphicsQueueFamilyIndex, presentQueueFamilyIndex },
 			.preTransform = transform,
 			.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-			.presentMode = presentMode,
+			.presentMode = swapchainPresentMode,
 			.clipped = VK_TRUE,
 			.oldSwapchain = swapchain,
 		}, NULL, &swapchain));
@@ -523,6 +523,24 @@ int main(int argc, char** argv) {
 	VkCall(vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, NULL));
 	VkImage swapchainImages[swapchainImageCount];
 	VkCall(vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, swapchainImages));
+
+	u32 swapchainImageViewCount = swapchainImageCount;
+	VkImageView swapchainImageViews[swapchainImageViewCount];
+	for (u64 i = 0; i < swapchainImageViewCount; i++) {
+		VkCall(vkCreateImageView(device, &(VkImageViewCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+			.image = swapchainImages[i],
+			.viewType = VK_IMAGE_VIEW_TYPE_2D,
+			.format = swapchainFormat.format,
+			.subresourceRange = (VkImageSubresourceRange){
+				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+				.levelCount = 1,
+				.layerCount = 1,
+			},
+		}, NULL, &swapchainImageViews[i]));
+
+		ASSERT(swapchainImageViews[i]);
+	}
 
 	VkSemaphore imageAvailableSemaphore = NULL;
 	VkSemaphore renderFinishedSemaphore = NULL;
@@ -559,9 +577,53 @@ int main(int argc, char** argv) {
 	}
 	ASSERT(graphicsCommandBuffer);
 
+	VkRenderPass renderPass = NULL;
+	{
+		VkCall(vkCreateRenderPass(device, &(VkRenderPassCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+			.attachmentCount = 1,
+			.pAttachments = &(VkAttachmentDescription){
+				.format = swapchainFormat.format,
+				.samples = VK_SAMPLE_COUNT_1_BIT,
+				.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+				.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+				.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+				.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+				.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+			},
+			.subpassCount = 1,
+			.pSubpasses = &(VkSubpassDescription){
+				.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+				.colorAttachmentCount = 1,
+				.pColorAttachments = &(VkAttachmentReference){
+					.attachment = 0,
+    				.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				},
+			},
+		}, NULL, &renderPass));
+	}
+	ASSERT(renderPass);
+
+	u32 swapchainFramebufferCount = swapchainImageCount;
+	VkFramebuffer swapchainFramebuffers[swapchainFramebufferCount];
+	for (u64 i = 0; i < swapchainFramebufferCount; i++) {
+		VkCall(vkCreateFramebuffer(device, &(VkFramebufferCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+			.renderPass = renderPass,
+			.attachmentCount = 1,
+			.pAttachments = &swapchainImageViews[i],
+			.width = swapchainExtent.width,
+			.height = swapchainExtent.height,
+			.layers = 1,
+		}, NULL, &swapchainFramebuffers[i]));
+
+		ASSERT(swapchainFramebuffers[i]);
+	}
+
 	while (WindowPollEvents()) {
-		u32 imageIndex = 0;
-		VkCall(vkAcquireNextImageKHR(device, swapchain, ~0ull, imageAvailableSemaphore, NULL, &imageIndex));
+		u32 swapchainImageIndex = 0;
+		VkCall(vkAcquireNextImageKHR(device, swapchain, ~0ull, imageAvailableSemaphore, NULL, &swapchainImageIndex));
 
 		VkCall(vkResetCommandPool(device, graphicsCommandPool, 0));
 
@@ -570,13 +632,29 @@ int main(int argc, char** argv) {
 			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
 		}));
 
-		vkCmdClearColorImage(graphicsCommandBuffer, swapchainImages[imageIndex], VK_IMAGE_LAYOUT_GENERAL, &(VkClearColorValue){
-			{ 1.0f, 0.0f, 1.0f, 1.0f },
-		}, 1, &(VkImageSubresourceRange){
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.levelCount = 1,
-			.layerCount = 1,
-		});
+		const VkClearColorValue ClearColor = (VkClearColorValue){
+			{ 1.0f, 0.0f, 0.0f, 1.0f },
+		};
+
+		const VkClearValue Clear = (VkClearValue){
+			.color = ClearColor,
+		};
+
+		vkCmdBeginRenderPass(graphicsCommandBuffer, &(VkRenderPassBeginInfo){
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+			.renderPass = renderPass,
+			.framebuffer = swapchainFramebuffers[swapchainImageIndex],
+			.renderArea = (VkRect2D){
+				.offset = (VkOffset2D){ .x = 0, .y = 0 },
+				.extent = swapchainExtent,
+			},
+			.clearValueCount = 1,
+			.pClearValues = &Clear,
+		}, VK_SUBPASS_CONTENTS_INLINE);
+
+		// TODO: Draw calls
+
+		vkCmdEndRenderPass(graphicsCommandBuffer);
 
 		VkCall(vkEndCommandBuffer(graphicsCommandBuffer));
 
@@ -597,7 +675,7 @@ int main(int argc, char** argv) {
 			.pWaitSemaphores = &renderFinishedSemaphore,
 			.swapchainCount = 1,
 			.pSwapchains = &swapchain,
-			.pImageIndices = &imageIndex,
+			.pImageIndices = &swapchainImageIndex,
 		}));
 
 		VkCall(vkDeviceWaitIdle(device));
@@ -605,10 +683,20 @@ int main(int argc, char** argv) {
 
 	VkCall(vkDeviceWaitIdle(device));
 	{
+		for (u64 i = 0; i < swapchainFramebufferCount; i++) {
+			vkDestroyFramebuffer(device, swapchainFramebuffers[i], NULL);
+		}
+
+		vkDestroyRenderPass(device, renderPass, NULL);
+
 		vkDestroyCommandPool(device, graphicsCommandPool, NULL);
 
 		vkDestroySemaphore(device, imageAvailableSemaphore, NULL);
 		vkDestroySemaphore(device, renderFinishedSemaphore, NULL);
+
+		for (u64 i = 0; i < swapchainImageViewCount; i++) {
+			vkDestroyImageView(device, swapchainImageViews[i], NULL);
+		}
 
 		vkDestroySwapchainKHR(device, swapchain, NULL);
 	}
