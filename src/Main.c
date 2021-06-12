@@ -589,7 +589,7 @@ int main(int argc, char** argv) {
 				.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 				.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
 				.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-				.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
 				.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 			},
 			.subpassCount = 1,
@@ -620,6 +620,131 @@ int main(int argc, char** argv) {
 
 		ASSERT(swapchainFramebuffers[i]);
 	}
+
+	VkShaderModule vertexShader = NULL;
+	{
+		FILE* file = fopen("triangle.vert.spirv", "rb");
+		ASSERT(file);
+
+		fseek(file, 0, SEEK_END);
+		u64 length = ftell(file);
+		ASSERT(length > 0);
+		fseek(file, 0, SEEK_SET);
+
+		u8 code[length];
+		ASSERT(fread(code, sizeof(u8), length, file) == length);
+		fclose(file);
+
+		VkCall(vkCreateShaderModule(device, &(VkShaderModuleCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+			.codeSize = length,
+			.pCode = cast(u32*) code,
+		}, NULL, &vertexShader));
+	}
+	ASSERT(vertexShader);
+
+	VkShaderModule fragmentShader = NULL;
+	{
+		FILE* file = fopen("triangle.frag.spirv", "rb");
+		ASSERT(file);
+
+		fseek(file, 0, SEEK_END);
+		u64 length = ftell(file);
+		ASSERT(length > 0);
+		fseek(file, 0, SEEK_SET);
+
+		u8 code[length];
+		ASSERT(fread(code, sizeof(u8), length, file) == length);
+		fclose(file);
+
+		VkCall(vkCreateShaderModule(device, &(VkShaderModuleCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+			.codeSize = length,
+			.pCode = cast(u32*) code,
+		}, NULL, &fragmentShader));
+	}
+	ASSERT(fragmentShader);
+
+	VkPipelineLayout trianglePipelineLayout = NULL;
+	{
+		VkCall(vkCreatePipelineLayout(device, &(VkPipelineLayoutCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+		}, NULL, &trianglePipelineLayout));
+	}
+	ASSERT(trianglePipelineLayout);
+
+	VkPipelineCache trianglePipelineCache = NULL;
+	{
+		VkCall(vkCreatePipelineCache(device, &(VkPipelineCacheCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
+		}, NULL, &trianglePipelineCache));
+	}
+	ASSERT(trianglePipelineCache);
+
+	VkPipeline trianglePipeline = NULL;
+	{
+		VkCall(vkCreateGraphicsPipelines(device, trianglePipelineCache, 1, &(VkGraphicsPipelineCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+			.stageCount = 2,
+			.pStages = (VkPipelineShaderStageCreateInfo[2]){
+				{
+					.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+					.stage = VK_SHADER_STAGE_VERTEX_BIT,
+					.module = vertexShader,
+					.pName = "main",
+				},
+				{
+					.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+					.stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+					.module = fragmentShader,
+					.pName = "main",
+				},
+			},
+			.pVertexInputState = &(VkPipelineVertexInputStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+			},
+			.pInputAssemblyState = &(VkPipelineInputAssemblyStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+				.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+			},
+			.pViewportState = &(VkPipelineViewportStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+    			.viewportCount = 1,
+    			.scissorCount = 1,
+			},
+			.pRasterizationState = &(VkPipelineRasterizationStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+				.polygonMode = VK_POLYGON_MODE_FILL,
+				.frontFace = VK_FRONT_FACE_CLOCKWISE,
+				.lineWidth = 1.0f,
+			},
+			.pMultisampleState = &(VkPipelineMultisampleStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+				.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+			},
+			.pDepthStencilState = &(VkPipelineDepthStencilStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+			},
+			.pColorBlendState = &(VkPipelineColorBlendStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+				.attachmentCount = 1,
+				.pAttachments = &(VkPipelineColorBlendAttachmentState){
+					.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT,
+				},
+			},
+			.pDynamicState = &(VkPipelineDynamicStateCreateInfo){
+				.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+				.dynamicStateCount = 2,
+				.pDynamicStates = (VkDynamicState[2]){
+					VK_DYNAMIC_STATE_VIEWPORT,
+					VK_DYNAMIC_STATE_SCISSOR,
+				},
+			},
+			.layout = trianglePipelineLayout,
+			.renderPass = renderPass,
+		}, NULL, &trianglePipeline));
+	}
+	ASSERT(trianglePipeline);
 
 	while (WindowPollEvents()) {
 		u32 swapchainImageIndex = 0;
@@ -652,7 +777,30 @@ int main(int argc, char** argv) {
 			.pClearValues = &Clear,
 		}, VK_SUBPASS_CONTENTS_INLINE);
 
-		// TODO: Draw calls
+		u32 windowWidth = 0, windowHeight = 0;
+		WindowGetSize(window, &windowWidth, &windowHeight);
+
+		vkCmdSetViewport(graphicsCommandBuffer, 0, 1, &(VkViewport){
+			.x = 0.0f,
+			.y = windowHeight,
+			.width = windowWidth,
+			.height = -cast(float) windowHeight,
+			.minDepth = 0.0f,
+			.maxDepth = 1.0f,
+		});
+		vkCmdSetScissor(graphicsCommandBuffer, 0, 1, &(VkRect2D){
+			.offset = (VkOffset2D){
+				.x = 0,
+				.y = 0,
+			},
+			.extent = (VkExtent2D){
+				.width = windowWidth,
+				.height = windowHeight,
+			},
+		});
+
+		vkCmdBindPipeline(graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline);
+		vkCmdDraw(graphicsCommandBuffer, 3, 1, 0, 0);
 
 		vkCmdEndRenderPass(graphicsCommandBuffer);
 
@@ -683,6 +831,13 @@ int main(int argc, char** argv) {
 
 	VkCall(vkDeviceWaitIdle(device));
 	{
+		vkDestroyPipelineLayout(device, trianglePipelineLayout, NULL);
+		vkDestroyPipelineCache(device, trianglePipelineCache, NULL);
+		vkDestroyPipeline(device, trianglePipeline, NULL);
+
+		vkDestroyShaderModule(device, fragmentShader, NULL);
+		vkDestroyShaderModule(device, vertexShader, NULL);
+
 		for (u64 i = 0; i < swapchainFramebufferCount; i++) {
 			vkDestroyFramebuffer(device, swapchainFramebuffers[i], NULL);
 		}
