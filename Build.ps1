@@ -32,3 +32,6 @@ if (!(Test-Path buildDir)) {								# If the build directory does not exist
 Push-Location $buildDir										# Go into the build directory
 clang @compilerDefines @compilerFlags -o $outFile @files -static	# Build the project
 Pop-Location												# Exit the build directory
+
+glslangValidator.exe .\triangle.vert.glsl -V -o .\triangle.vert.spirv
+glslangValidator.exe .\triangle.frag.glsl -V -o .\triangle.frag.spirv
