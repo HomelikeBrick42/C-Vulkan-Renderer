@@ -148,6 +148,24 @@ b8 WindowPollEvents() {
 	#error This platform is not supported
 #endif
 
+#if defined(_DEBUG)
+
+VkBool32 VKAPI_CALL DebugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageTypes, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
+	const char* flagString =
+		(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) ? "Verbose" :
+		(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) ? "Info" :
+		(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) ? "Warning" :
+		(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ? "Error" :
+		"Unknown Type";
+
+	printf("%s: %s\n", flagString, pCallbackData->pMessage);
+
+	ASSERT(!(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT));
+	return VK_TRUE;
+}
+
+#endif
+
 int main(int argc, char** argv) {
 	const u32 RequiredVulkanAPIVersion = VK_API_VERSION_1_2;
 
@@ -168,7 +186,7 @@ int main(int argc, char** argv) {
 	}
 
 	const char* const InstanceLayers[] = {
-	#if _DEBUG
+	#if defined(_DEBUG)
 		"VK_LAYER_KHRONOS_validation",
 	#endif
 	};
@@ -179,6 +197,9 @@ int main(int argc, char** argv) {
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 	#else
 		#error This platform is not supported
+	#endif
+	#if defined(_DEBUG)
+		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 	#endif
 	};
 
@@ -251,6 +272,25 @@ int main(int argc, char** argv) {
 		}, NULL, &instance));
 	}
 	ASSERT(instance);
+
+#if defined(_DEBUG)
+	VkDebugUtilsMessengerEXT debugMessenger = NULL;
+	{
+		PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT = cast(PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+		ASSERT(vkCreateDebugReportCallbackEXT);
+
+		VkCall(vkCreateDebugUtilsMessengerEXT(instance, &(VkDebugUtilsMessengerCreateInfoEXT){
+			.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+    		.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT
+    							|/*VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT
+    							|*/VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT
+    							| VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+			.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
+			.pfnUserCallback = &DebugMessengerCallback,
+		}, NULL, &debugMessenger));
+	}
+	ASSERT(debugMessenger);
+#endif
 
 	Window window = NULL;
 	{
@@ -777,7 +817,7 @@ int main(int argc, char** argv) {
 			.pClearValues = &Clear,
 		}, VK_SUBPASS_CONTENTS_INLINE);
 
-		u32 windowWidth = 0, windowHeight = 0;
+		u32 windowWidth = 0, windowHeight = 0; // TODO: Do not get this every frame
 		WindowGetSize(window, &windowWidth, &windowHeight);
 
 		vkCmdSetViewport(graphicsCommandBuffer, 0, 1, &(VkViewport){
@@ -859,6 +899,14 @@ int main(int argc, char** argv) {
 
 	vkDestroySurfaceKHR(instance, surface, NULL);
 	WindowDestroy(window);
+
+#if defined(_DEBUG)
+	{
+		PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT = cast(PFN_vkDestroyDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+		ASSERT(vkDestroyDebugUtilsMessengerEXT);
+		vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, NULL);
+	}
+#endif
 
 	vkDestroyInstance(instance, NULL);
 	return 0;
