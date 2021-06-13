@@ -27,6 +27,7 @@ typedef struct VulkanSwapchain_t {
 	VkCompositeAlphaFlagsKHR CompositeAlpha;
 } VulkanSwapchain;
 
+// HACK: VulkanSwapchain::Swapchain must always be zero when called externally
 b8 VulkanSwapchain_Create(
 	VulkanSwapchain* swapchain,
 	VkPhysicalDevice physicalDevice,

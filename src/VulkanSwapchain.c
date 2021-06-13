@@ -37,9 +37,9 @@ b8 VulkanSwapchain_Create(
 	u32 width,
 	u32 height
 ) {
-	*swapchain = (VulkanSwapchain){};
-
-	swapchain->Swapchain = VK_NULL_HANDLE;
+	if (!swapchain->Swapchain) {
+		swapchain->Swapchain = VK_NULL_HANDLE;
+	}
 	swapchain->PhysicalDevice = physicalDevice;
 	swapchain->Device = device;
 	swapchain->Surface = surface;
