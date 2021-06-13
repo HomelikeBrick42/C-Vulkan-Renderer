@@ -15,6 +15,7 @@
 #include <vulkan/vulkan.h>
 
 #include "VulkanUtil.h"
+#include "VulkanSwapchain.h"
 
 #if defined(_DEBUG)
 
@@ -125,7 +126,7 @@ int main(int argc, char** argv) {
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	u32 graphicsQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	u32 presentQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	if (!PickVulkanPhysicalDevice(
+	if (!ChooseVulkanPhysicalDevice(
 			&physicalDevice,
 			instance,
 			surface,
@@ -161,167 +162,11 @@ int main(int argc, char** argv) {
 	ASSERT(graphicsQueue != VK_NULL_HANDLE);
 	ASSERT(presentQueue != VK_NULL_HANDLE);
 
-	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-	VkSurfaceFormatKHR swapchainFormat = {};
-	VkPresentModeKHR swapchainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
-	VkExtent2D swapchainExtent = {};
-	{
-		{
-			u32 surfaceFormatCount = 0;
-			VkCall(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, NULL));
-			ASSERT(surfaceFormatCount > 0);
-			VkSurfaceFormatKHR surfaceFormats[surfaceFormatCount];
-			VkCall(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, surfaceFormats));
-
-			if (surfaceFormatCount == 1 && surfaceFormats[0].format == VK_FORMAT_UNDEFINED) {
-				swapchainFormat.format = VK_FORMAT_R8G8B8A8_UNORM;
-				swapchainFormat.colorSpace = surfaceFormats[0].colorSpace;
-			} else {
-				b8 found = false;
-				for (u64 i = 0; i < surfaceFormatCount; i++) {
-					if (surfaceFormats[i].format == VK_FORMAT_B8G8R8A8_SRGB && surfaceFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-						swapchainFormat = surfaceFormats[i];
-						found = true;
-						break;
-					}
-				}
-
-				if (!found) {
-					swapchainFormat = surfaceFormats[0];
-				}
-			}
-		}
-
-		{
-			u32 presentModeCount = 0;
-			VkCall(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, NULL));
-			VkPresentModeKHR presentModes[presentModeCount];
-			VkCall(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, presentModes));
-
-			for (u64 i = 0; i < presentModeCount; i++) {
-				if (presentModes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
-					swapchainPresentMode = presentModes[i];
-					break;
-				}
-			}
-		}
-
-		u32 imageCount = 0;
-		VkSurfaceTransformFlagBitsKHR transform = 0;
-		VkSurfaceCapabilitiesKHR surfaceCapabilities = {};
-		{
-			VkCall(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities));
-
-			if (surfaceCapabilities.currentExtent.width != ~0u && surfaceCapabilities.currentExtent.height != ~0u) {
-				swapchainExtent = surfaceCapabilities.currentExtent;
-			} else {
-				u32 width = 0, height = 0;
-				Window_GetSize(window, &width, &height);
-
-				width = max(surfaceCapabilities.minImageExtent.width, min(surfaceCapabilities.maxImageExtent.width, width));
-				height = max(surfaceCapabilities.minImageExtent.height, min(surfaceCapabilities.maxImageExtent.height, height));
-
-				swapchainExtent = (VkExtent2D){
-					.width = width,
-					.height = height
-				};
-			}
-
-			imageCount = surfaceCapabilities.minImageCount + 1;
-			imageCount = min(surfaceCapabilities.maxImageCount, imageCount);
-
-			transform = surfaceCapabilities.currentTransform;
-		}
-
-		VkCompositeAlphaFlagsKHR compositeAlpha =
-			  (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR)
-			? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
-			: (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR)
-			? VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR
-			: (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR)
-			? VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR
-			: VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
-
-		VkCall(vkCreateSwapchainKHR(device, &(VkSwapchainCreateInfoKHR){
-			.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-			.surface = surface,
-			.minImageCount = imageCount,
-			.imageFormat = swapchainFormat.format,
-			.imageColorSpace = swapchainFormat.colorSpace,
-			.imageExtent = swapchainExtent,
-			.imageArrayLayers = 1,
-			.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-			.imageSharingMode = graphicsQueueFamilyIndex != presentQueueFamilyIndex ? VK_SHARING_MODE_CONCURRENT : VK_SHARING_MODE_EXCLUSIVE,
-			.queueFamilyIndexCount = graphicsQueueFamilyIndex != presentQueueFamilyIndex ? 2 : 1,
-			.pQueueFamilyIndices = (u32[2]){ graphicsQueueFamilyIndex, presentQueueFamilyIndex },
-			.preTransform = transform,
-			.compositeAlpha = compositeAlpha,
-			.presentMode = swapchainPresentMode,
-			.clipped = VK_TRUE,
-			.oldSwapchain = swapchain,
-		}, NULL, &swapchain));
+	VkSurfaceFormatKHR surfaceFormat = {};
+	if (!ChooseVulkanSurfaceFormat(&surfaceFormat, physicalDevice, surface)) {
+		printf("Unable to find a suitable surface format!\n");
+		return -1;
 	}
-	ASSERT(swapchain != VK_NULL_HANDLE);
-
-	u32 swapchainImageCount = 0;
-	VkCall(vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, NULL));
-	VkImage swapchainImages[swapchainImageCount];
-	VkCall(vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, swapchainImages));
-
-	u32 swapchainImageViewCount = swapchainImageCount;
-	VkImageView swapchainImageViews[swapchainImageViewCount];
-	for (u64 i = 0; i < swapchainImageViewCount; i++) {
-		swapchainImageViews[i] = VK_NULL_HANDLE;
-
-		VkCall(vkCreateImageView(device, &(VkImageViewCreateInfo){
-			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-			.image = swapchainImages[i],
-			.viewType = VK_IMAGE_VIEW_TYPE_2D,
-			.format = swapchainFormat.format,
-			.subresourceRange = (VkImageSubresourceRange){
-				.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-				.levelCount = 1,
-				.layerCount = 1,
-			},
-		}, NULL, &swapchainImageViews[i]));
-
-		ASSERT(swapchainImageViews[i] != VK_NULL_HANDLE);
-	}
-
-	VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
-	VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
-	{
-		VkCall(vkCreateSemaphore(device, &(VkSemaphoreCreateInfo){
-			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-		}, NULL, &imageAvailableSemaphore));
-
-		VkCall(vkCreateSemaphore(device, &(VkSemaphoreCreateInfo){
-			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-		}, NULL, &renderFinishedSemaphore));
-	}
-	ASSERT(imageAvailableSemaphore != VK_NULL_HANDLE);
-	ASSERT(renderFinishedSemaphore != VK_NULL_HANDLE);
-
-	VkCommandPool graphicsCommandPool = VK_NULL_HANDLE;
-	{
-		VkCall(vkCreateCommandPool(device, &(VkCommandPoolCreateInfo){
-			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-			.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
-			.queueFamilyIndex = graphicsQueueFamilyIndex,
-		}, NULL, &graphicsCommandPool));
-	}
-	ASSERT(graphicsCommandPool != VK_NULL_HANDLE);
-
-	VkCommandBuffer graphicsCommandBuffer = VK_NULL_HANDLE;
-	{
-		VkCall(vkAllocateCommandBuffers(device, &(VkCommandBufferAllocateInfo){
-			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-			.commandPool = graphicsCommandPool,
-			.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-			.commandBufferCount = 1,
-		}, &graphicsCommandBuffer));
-	}
-	ASSERT(graphicsCommandBuffer != VK_NULL_HANDLE);
 
 	VkRenderPass renderPass = VK_NULL_HANDLE;
 	{
@@ -329,7 +174,7 @@ int main(int argc, char** argv) {
 			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
 			.attachmentCount = 1,
 			.pAttachments = &(VkAttachmentDescription){
-				.format = swapchainFormat.format,
+				.format = surfaceFormat.format,
 				.samples = VK_SAMPLE_COUNT_1_BIT,
 				.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
 				.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -351,22 +196,25 @@ int main(int argc, char** argv) {
 	}
 	ASSERT(renderPass != VK_NULL_HANDLE);
 
-	u32 swapchainFramebufferCount = swapchainImageCount;
-	VkFramebuffer swapchainFramebuffers[swapchainFramebufferCount];
-	for (u64 i = 0; i < swapchainFramebufferCount; i++) {
-		swapchainFramebuffers[i] = VK_NULL_HANDLE;
+	u32 windowWidth = 0, windowHeight = 0;
+	Window_GetSize(window, &windowWidth, &windowHeight);
 
-		VkCall(vkCreateFramebuffer(device, &(VkFramebufferCreateInfo){
-			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-			.renderPass = renderPass,
-			.attachmentCount = 1,
-			.pAttachments = &swapchainImageViews[i],
-			.width = swapchainExtent.width,
-			.height = swapchainExtent.height,
-			.layers = 1,
-		}, NULL, &swapchainFramebuffers[i]));
-
-		ASSERT(swapchainFramebuffers[i] != VK_NULL_HANDLE);
+	VulkanSwapchain swapchain = {};
+	if (!VulkanSwapchain_Create(
+		&swapchain,
+		physicalDevice,
+		device,
+		surface,
+		renderPass,
+		surfaceFormat,
+		window,
+		graphicsQueueFamilyIndex,
+		presentQueueFamilyIndex,
+		windowWidth,
+		windowHeight)
+	) {
+		printf("Unable to create swapchain!\n");
+		return -1;
 	}
 
 	VkShaderModule vertexShader = VK_NULL_HANDLE;
@@ -494,9 +342,46 @@ int main(int argc, char** argv) {
 	}
 	ASSERT(trianglePipeline != VK_NULL_HANDLE);
 
+	VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
+	VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
+	{
+		VkCall(vkCreateSemaphore(device, &(VkSemaphoreCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		}, NULL, &imageAvailableSemaphore));
+
+		VkCall(vkCreateSemaphore(device, &(VkSemaphoreCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+		}, NULL, &renderFinishedSemaphore));
+	}
+	ASSERT(imageAvailableSemaphore != VK_NULL_HANDLE);
+	ASSERT(renderFinishedSemaphore != VK_NULL_HANDLE);
+
+	VkCommandPool graphicsCommandPool = VK_NULL_HANDLE;
+	{
+		VkCall(vkCreateCommandPool(device, &(VkCommandPoolCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+			.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+			.queueFamilyIndex = graphicsQueueFamilyIndex,
+		}, NULL, &graphicsCommandPool));
+	}
+	ASSERT(graphicsCommandPool != VK_NULL_HANDLE);
+
+	VkCommandBuffer graphicsCommandBuffer = VK_NULL_HANDLE;
+	{
+		VkCall(vkAllocateCommandBuffers(device, &(VkCommandBufferAllocateInfo){
+			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+			.commandPool = graphicsCommandPool,
+			.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+			.commandBufferCount = 1,
+		}, &graphicsCommandBuffer));
+	}
+	ASSERT(graphicsCommandBuffer != VK_NULL_HANDLE);
+
 	while (Window_PollEvents()) {
+		VulkanSwapchain_TryResize(&swapchain);
+
 		u32 swapchainImageIndex = 0;
-		VkCall(vkAcquireNextImageKHR(device, swapchain, ~0ull, imageAvailableSemaphore, NULL, &swapchainImageIndex));
+		VkCall(vkAcquireNextImageKHR(device, swapchain.Swapchain, ~0ull, imageAvailableSemaphore, NULL, &swapchainImageIndex));
 
 		VkCall(vkResetCommandPool(device, graphicsCommandPool, 0));
 
@@ -523,7 +408,7 @@ int main(int argc, char** argv) {
 				.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 				.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 				.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-				.image = swapchainImages[swapchainImageIndex],
+				.image = swapchain.Images[swapchainImageIndex],
 				.subresourceRange = (VkImageSubresourceRange){
 					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 					.levelCount = VK_REMAINING_MIP_LEVELS,
@@ -543,23 +428,20 @@ int main(int argc, char** argv) {
 		vkCmdBeginRenderPass(graphicsCommandBuffer, &(VkRenderPassBeginInfo){
 			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
 			.renderPass = renderPass,
-			.framebuffer = swapchainFramebuffers[swapchainImageIndex],
+			.framebuffer = swapchain.Framebuffers[swapchainImageIndex],
 			.renderArea = (VkRect2D){
 				.offset = (VkOffset2D){ .x = 0, .y = 0 },
-				.extent = swapchainExtent,
+				.extent = swapchain.Extent,
 			},
 			.clearValueCount = 1,
 			.pClearValues = &Clear,
 		}, VK_SUBPASS_CONTENTS_INLINE);
 
-		u32 windowWidth = 0, windowHeight = 0; // TODO: Do not get this every frame
-		Window_GetSize(window, &windowWidth, &windowHeight);
-
 		vkCmdSetViewport(graphicsCommandBuffer, 0, 1, &(VkViewport){
 			.x = 0.0f,
-			.y = windowHeight,
-			.width = windowWidth,
-			.height = -cast(float) windowHeight,
+			.y = swapchain.Extent.height,
+			.width = swapchain.Extent.width,
+			.height = -cast(float) swapchain.Extent.height,
 			.minDepth = 0.0f,
 			.maxDepth = 1.0f,
 		});
@@ -569,8 +451,8 @@ int main(int argc, char** argv) {
 				.y = 0,
 			},
 			.extent = (VkExtent2D){
-				.width = windowWidth,
-				.height = windowHeight,
+				.width = swapchain.Extent.width,
+				.height = swapchain.Extent.height,
 			},
 		});
 
@@ -597,7 +479,7 @@ int main(int argc, char** argv) {
 				.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 				.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
 				.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-				.image = swapchainImages[swapchainImageIndex],
+				.image = swapchain.Images[swapchainImageIndex],
 				.subresourceRange = (VkImageSubresourceRange){
 					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
 					.levelCount = VK_REMAINING_MIP_LEVELS,
@@ -624,7 +506,7 @@ int main(int argc, char** argv) {
 			.waitSemaphoreCount = 1,
 			.pWaitSemaphores = &renderFinishedSemaphore,
 			.swapchainCount = 1,
-			.pSwapchains = &swapchain,
+			.pSwapchains = &swapchain.Swapchain,
 			.pImageIndices = &swapchainImageIndex,
 		}));
 
@@ -640,9 +522,7 @@ int main(int argc, char** argv) {
 		vkDestroyShaderModule(device, fragmentShader, NULL);
 		vkDestroyShaderModule(device, vertexShader, NULL);
 
-		for (u64 i = 0; i < swapchainFramebufferCount; i++) {
-			vkDestroyFramebuffer(device, swapchainFramebuffers[i], NULL);
-		}
+		VulkanSwapchain_Destroy(&swapchain);
 
 		vkDestroyRenderPass(device, renderPass, NULL);
 
@@ -650,12 +530,6 @@ int main(int argc, char** argv) {
 
 		vkDestroySemaphore(device, imageAvailableSemaphore, NULL);
 		vkDestroySemaphore(device, renderFinishedSemaphore, NULL);
-
-		for (u64 i = 0; i < swapchainImageViewCount; i++) {
-			vkDestroyImageView(device, swapchainImageViews[i], NULL);
-		}
-
-		vkDestroySwapchainKHR(device, swapchain, NULL);
 	}
 	vkDestroyDevice(device, NULL);
 

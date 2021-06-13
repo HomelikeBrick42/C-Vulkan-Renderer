@@ -6,6 +6,7 @@
 #include <vulkan/vulkan.h>
 
 #define VkCall(x) ASSERT((x) == VK_SUCCESS)
+#define VkCheck(x) if((x) != VK_SUCCESS) { return false; }
 
 b8 CreateVulkanInstance(
 	VkInstance* instance,
@@ -16,7 +17,7 @@ b8 CreateVulkanInstance(
 
 b8 CreateVulkanSurface(VkSurfaceKHR* surface, VkInstance instance, Window window);
 
-b8 PickVulkanPhysicalDevice(
+b8 ChooseVulkanPhysicalDevice(
 	VkPhysicalDevice* physicalDevice,
 	VkInstance instance,
 	VkSurfaceKHR surface,
@@ -35,3 +36,5 @@ b8 CreateVulkanDevice(
 	u32 graphicsQueueFamilyIndex,
 	u32 presentQueueFamilyIndex
 );
+
+b8 ChooseVulkanSurfaceFormat(VkSurfaceFormatKHR* format, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);

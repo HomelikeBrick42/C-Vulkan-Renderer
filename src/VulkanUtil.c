@@ -66,24 +66,24 @@ b8 CreateVulkanInstance(
 	const char** extensions, u32 extensionCount
 ) {
 	u32 layerPropertiesCount = 0;
-	VkCall(vkEnumerateInstanceLayerProperties(&layerPropertiesCount, NULL));
+	VkCheck(vkEnumerateInstanceLayerProperties(&layerPropertiesCount, NULL));
 	VkLayerProperties layerProperties[layerPropertiesCount];
-	VkCall(vkEnumerateInstanceLayerProperties(&layerPropertiesCount, layerProperties));
+	VkCheck(vkEnumerateInstanceLayerProperties(&layerPropertiesCount, layerProperties));
 	if (!HasRequiredLayers(layers, layerCount, layerProperties, layerPropertiesCount)) {
 		return false;
 	}
 
 	u32 extensionPropertiesCount = 0;
-	VkCall(vkEnumerateInstanceExtensionProperties(NULL, &extensionPropertiesCount, NULL));
+	VkCheck(vkEnumerateInstanceExtensionProperties(NULL, &extensionPropertiesCount, NULL));
 	VkExtensionProperties extensionProperties[extensionPropertiesCount];
-	VkCall(vkEnumerateInstanceExtensionProperties(NULL, &extensionPropertiesCount, extensionProperties));
+	VkCheck(vkEnumerateInstanceExtensionProperties(NULL, &extensionPropertiesCount, extensionProperties));
 	if (!HasRequiredExtensions(extensions, extensionCount, extensionProperties, extensionPropertiesCount)) {
 		return false;
 	}
 
 	*instance = VK_NULL_HANDLE;
 
-	VkResult result = vkCreateInstance(&(VkInstanceCreateInfo){
+	VkCheck(vkCreateInstance(&(VkInstanceCreateInfo){
 		.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 		.pApplicationInfo = &(VkApplicationInfo){
 			.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
@@ -97,25 +97,25 @@ b8 CreateVulkanInstance(
 		.ppEnabledLayerNames = layers,
 		.enabledExtensionCount = extensionCount,
 		.ppEnabledExtensionNames = extensions,
-	}, NULL, instance);
+	}, NULL, instance));
 
-	return result == VK_SUCCESS && instance != VK_NULL_HANDLE;
+	return instance != VK_NULL_HANDLE;
 }
 
 b8 CreateVulkanSurface(VkSurfaceKHR* surface, VkInstance instance, Window window) {
 	*surface = VK_NULL_HANDLE;
 
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
-	VkResult result = vkCreateWin32SurfaceKHR(instance, &(VkWin32SurfaceCreateInfoKHR){
+	VkCheck(vkCreateWin32SurfaceKHR(instance, &(VkWin32SurfaceCreateInfoKHR){
 		.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
 		.hinstance = window->Instance,
 		.hwnd = window->Handle,
-	}, NULL, surface);
+	}, NULL, surface));
 #else
 	#error This platform is not supported
 #endif
 
-	return result == VK_SUCCESS && surface != VK_NULL_HANDLE;
+	return surface != VK_NULL_HANDLE;
 }
 
 static b8 GetQueueFamilies(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, u32* graphicsQueueFamilyIndex, u32* presentQueueFamilyIndex) {
@@ -132,7 +132,7 @@ static b8 GetQueueFamilies(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface
 			*graphicsQueueFamilyIndex = i;
 
 			VkBool32 presentSupport = false;
-			VkCall(vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport));
+			VkCheck(vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport));
 
 			if (presentSupport &&
 			#if defined(VK_USE_PLATFORM_WIN32_KHR)
@@ -150,7 +150,7 @@ static b8 GetQueueFamilies(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface
 	if (*presentQueueFamilyIndex == VK_QUEUE_FAMILY_IGNORED) {
 		for (u32 i = 0; i < queueFamilyPropertiesCount; i++) {
 			VkBool32 presentSupport = false;
-			VkCall(vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport));
+			VkCheck(vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport));
 
 			if (presentSupport &&
 			#if defined(VK_USE_PLATFORM_WIN32_KHR)
@@ -168,7 +168,7 @@ static b8 GetQueueFamilies(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface
 	return *graphicsQueueFamilyIndex != VK_QUEUE_FAMILY_IGNORED && *presentQueueFamilyIndex != VK_QUEUE_FAMILY_IGNORED;
 }
 
-b8 PickVulkanPhysicalDevice(
+b8 ChooseVulkanPhysicalDevice(
 	VkPhysicalDevice* physicalDevice,
 	VkInstance instance,
 	VkSurfaceKHR surface,
@@ -181,27 +181,27 @@ b8 PickVulkanPhysicalDevice(
 	*physicalDevice = VK_NULL_HANDLE;
 
 	u32 physicalDeviceCount = 0;
-	VkCall(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, NULL));
+	VkCheck(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, NULL));
 	if (physicalDeviceCount == 0) {
 		return false;
 	}
 
 	VkPhysicalDevice physicalDevices[physicalDeviceCount];
-	VkCall(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices));
+	VkCheck(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices));
 
 	for (u32 i = 0; i < physicalDeviceCount; i++) {
 		u32 layerPropertiesCount = 0;
-		VkCall(vkEnumerateDeviceLayerProperties(physicalDevices[i], &layerPropertiesCount, NULL));
+		VkCheck(vkEnumerateDeviceLayerProperties(physicalDevices[i], &layerPropertiesCount, NULL));
 		VkLayerProperties layerProperties[layerPropertiesCount];
-		VkCall(vkEnumerateDeviceLayerProperties(physicalDevices[i], &layerPropertiesCount, layerProperties));
+		VkCheck(vkEnumerateDeviceLayerProperties(physicalDevices[i], &layerPropertiesCount, layerProperties));
 		if (!HasRequiredLayers(layers, layerCount, layerProperties, layerPropertiesCount)) {
 			continue;
 		}
 
 		u32 extensionPropertiesCount = 0;
-		VkCall(vkEnumerateDeviceExtensionProperties(physicalDevices[i], NULL, &extensionPropertiesCount, NULL));
+		VkCheck(vkEnumerateDeviceExtensionProperties(physicalDevices[i], NULL, &extensionPropertiesCount, NULL));
 		VkExtensionProperties extensionProperties[extensionPropertiesCount];
-		VkCall(vkEnumerateDeviceExtensionProperties(physicalDevices[i], NULL, &extensionPropertiesCount, extensionProperties));
+		VkCheck(vkEnumerateDeviceExtensionProperties(physicalDevices[i], NULL, &extensionPropertiesCount, extensionProperties));
 		if (!HasRequiredExtensions(extensions, extensionCount, extensionProperties, extensionPropertiesCount)) {
 			continue;
 		}
@@ -240,7 +240,7 @@ b8 CreateVulkanDevice(
 ) {
 	*device = VK_NULL_HANDLE;
 
-	VkResult result = vkCreateDevice(physicalDevice, &(VkDeviceCreateInfo){
+	VkCheck(vkCreateDevice(physicalDevice, &(VkDeviceCreateInfo){
 		.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
 		.queueCreateInfoCount = graphicsQueueFamilyIndex == presentQueueFamilyIndex ? 1 : 2,
 		.pQueueCreateInfos = (VkDeviceQueueCreateInfo[2]){
@@ -261,7 +261,36 @@ b8 CreateVulkanDevice(
 		.ppEnabledLayerNames = layers,
 		.enabledExtensionCount = extensionCount,
 		.ppEnabledExtensionNames = extensions,
-	}, NULL, device);
+	}, NULL, device));
 
-	return result == VK_SUCCESS && device != VK_NULL_HANDLE;
+	return device != VK_NULL_HANDLE;
+}
+
+b8 ChooseVulkanSurfaceFormat(VkSurfaceFormatKHR* format, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface) {
+	u32 surfaceFormatCount = 0;
+	VkCheck(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, NULL));
+	if (surfaceFormatCount == 0) {
+		return false;
+	}
+
+	VkSurfaceFormatKHR surfaceFormats[surfaceFormatCount];
+	VkCheck(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, surfaceFormats));
+
+	if (surfaceFormatCount == 1 && surfaceFormats[0].format == VK_FORMAT_UNDEFINED) {
+		format->format = VK_FORMAT_R8G8B8A8_UNORM;
+		format->colorSpace = surfaceFormats[0].colorSpace;
+		return true;
+	}
+
+	for (u32 i = 0; i < surfaceFormatCount; i++) {
+		if ((surfaceFormats[i].format == VK_FORMAT_B8G8R8A8_SRGB || surfaceFormats[i].format == VK_FORMAT_R8G8B8A8_UNORM) &&
+			surfaceFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+		) {
+			*format = surfaceFormats[i];
+			return true;
+		}
+	}
+
+	*format = surfaceFormats[0];
+	return true;
 }

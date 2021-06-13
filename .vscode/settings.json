@@ -3,6 +3,7 @@
 		"*.lang": "jai",
 		"vulkan.h": "c",
 		"typedefs.h": "c",
-		"stdio.h": "c"
+		"stdio.h": "c",
+		"vulkanswapchain.h": "c"
 	}
 }
