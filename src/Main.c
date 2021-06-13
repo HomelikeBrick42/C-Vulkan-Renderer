@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
 	#endif
 	};
 
-	VkInstance instance = NULL;
+	VkInstance instance = VK_NULL_HANDLE;
 	{
 		b8 hasLayers = true;
 		{
@@ -271,10 +271,10 @@ int main(int argc, char** argv) {
 			.ppEnabledExtensionNames = InstanceExtentions,
 		}, NULL, &instance));
 	}
-	ASSERT(instance);
+	ASSERT(instance != VK_NULL_HANDLE);
 
 #if defined(_DEBUG)
-	VkDebugUtilsMessengerEXT debugMessenger = NULL;
+	VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
 	{
 		PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT = cast(PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
 		ASSERT(vkCreateDebugReportCallbackEXT);
@@ -289,7 +289,7 @@ int main(int argc, char** argv) {
 			.pfnUserCallback = &DebugMessengerCallback,
 		}, NULL, &debugMessenger));
 	}
-	ASSERT(debugMessenger);
+	ASSERT(debugMessenger != VK_NULL_HANDLE);
 #endif
 
 	Window window = NULL;
@@ -300,7 +300,7 @@ int main(int argc, char** argv) {
 
 	WindowShow(window);
 
-	VkSurfaceKHR surface = NULL;
+	VkSurfaceKHR surface = VK_NULL_HANDLE;
 	{
 	#if defined(PLATFORM_WINDOWS)
 		VkCall(vkCreateWin32SurfaceKHR(instance, &(VkWin32SurfaceCreateInfoKHR){
@@ -312,7 +312,7 @@ int main(int argc, char** argv) {
 		#error This platform is not supported
 	#endif
 	}
-	ASSERT(surface);
+	ASSERT(surface != VK_NULL_HANDLE);
 
 	const char* const DeviceLayers[] = {
 	};
@@ -321,9 +321,9 @@ int main(int argc, char** argv) {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 	};
 
-	VkPhysicalDevice physicalDevice = NULL;
-	u32 graphicsQueueFamilyIndex = cast(u32) -1;
-	u32 presentQueueFamilyIndex = cast(u32) -1;
+	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+	u32 graphicsQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	u32 presentQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	{
 		u32 physicalDeviceCount = 0;
 		VkCall(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, NULL));
@@ -383,8 +383,8 @@ int main(int argc, char** argv) {
 					}
 				}
 
-				u32 tempGraphicsQueueFamilyIndex = cast(u32) -1;
-				u32 tempPresentQueueFamilyIndex = cast(u32) -1;
+				u32 tempGraphicsQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+				u32 tempPresentQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 				{
 					u32 queueFamilyPropertiesCount = 0;
 					vkGetPhysicalDeviceQueueFamilyProperties(physicalDevices[i], &queueFamilyPropertiesCount, NULL);
@@ -397,18 +397,30 @@ int main(int argc, char** argv) {
 
 							VkBool32 presentSupport = false;
 							VkCall(vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevices[i], i, surface, &presentSupport));
-							if (presentSupport) {
+							if (presentSupport &&
+							#if defined(PLATFORM_WINDOWS)
+								vkGetPhysicalDeviceWin32PresentationSupportKHR(physicalDevices[i], i)
+							#else
+								#error This platform is not supported
+							#endif
+							) {
 								tempPresentQueueFamilyIndex = i;
 								break;
 							}
 						}
 					}
 
-					if (tempPresentQueueFamilyIndex == cast(u32) -1) {
+					if (tempPresentQueueFamilyIndex == VK_QUEUE_FAMILY_IGNORED) {
 						for (u64 i = 0; i < queueFamilyPropertiesCount; i++) {
 							VkBool32 presentSupport = false;
 							VkCall(vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevices[i], i, surface, &presentSupport));
-							if (presentSupport) {
+							if (presentSupport && 
+							#if defined(PLATFORM_WINDOWS)
+								vkGetPhysicalDeviceWin32PresentationSupportKHR(physicalDevices[i], i)
+							#else
+								#error This platform is not supported
+							#endif
+							) {
 								tempPresentQueueFamilyIndex = i;
 								break;
 							}
@@ -418,8 +430,8 @@ int main(int argc, char** argv) {
 
 				if (hasLayers &&
 					hasExtentions &&
-					tempGraphicsQueueFamilyIndex != cast(u32) -1 &&
-					tempPresentQueueFamilyIndex != cast(u32) -1
+					tempGraphicsQueueFamilyIndex != VK_QUEUE_FAMILY_IGNORED &&
+					tempPresentQueueFamilyIndex != VK_QUEUE_FAMILY_IGNORED
 				) {
 					physicalDevice = physicalDevices[i];
 					graphicsQueueFamilyIndex = tempGraphicsQueueFamilyIndex;
@@ -432,11 +444,11 @@ int main(int argc, char** argv) {
 			}
 		}
 	}
-	ASSERT(physicalDevice);
-	ASSERT(graphicsQueueFamilyIndex != cast(u32) -1);
-	ASSERT(presentQueueFamilyIndex != cast(u32) -1);
+	ASSERT(physicalDevice != VK_NULL_HANDLE);
+	ASSERT(graphicsQueueFamilyIndex != VK_QUEUE_FAMILY_IGNORED);
+	ASSERT(presentQueueFamilyIndex != VK_QUEUE_FAMILY_IGNORED);
 
-	VkDevice device = NULL;
+	VkDevice device = VK_NULL_HANDLE;
 	{
 		VkCall(vkCreateDevice(physicalDevice, &(VkDeviceCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -461,18 +473,18 @@ int main(int argc, char** argv) {
 			.ppEnabledExtensionNames = DeviceExtentions,
 		}, NULL, &device));
 	}
-	ASSERT(device);
+	ASSERT(device != VK_NULL_HANDLE);
 
-	VkQueue graphicsQueue = NULL;
-	VkQueue presentQueue = NULL;
+	VkQueue graphicsQueue = VK_NULL_HANDLE;
+	VkQueue presentQueue = VK_NULL_HANDLE;
 	{
 		vkGetDeviceQueue(device, graphicsQueueFamilyIndex, 0, &graphicsQueue);
 		vkGetDeviceQueue(device, presentQueueFamilyIndex, 0, &presentQueue);
 	}
-	ASSERT(graphicsQueue);
-	ASSERT(presentQueue);
+	ASSERT(graphicsQueue != VK_NULL_HANDLE);
+	ASSERT(presentQueue != VK_NULL_HANDLE);
 
-	VkSwapchainKHR swapchain = NULL;
+	VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 	VkSurfaceFormatKHR swapchainFormat = {};
 	VkPresentModeKHR swapchainPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 	VkExtent2D swapchainExtent = {};
@@ -480,20 +492,26 @@ int main(int argc, char** argv) {
 		{
 			u32 surfaceFormatCount = 0;
 			VkCall(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, NULL));
+			ASSERT(surfaceFormatCount > 0);
 			VkSurfaceFormatKHR surfaceFormats[surfaceFormatCount];
 			VkCall(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, surfaceFormats));
 
-			b8 found = false;
-			for (u64 i = 0; i < surfaceFormatCount; i++) {
-				if (surfaceFormats[i].format == VK_FORMAT_B8G8R8A8_SRGB && surfaceFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-					swapchainFormat = surfaceFormats[i];
-					found = true;
-					break;
+			if (surfaceFormatCount == 1 && surfaceFormats[0].format == VK_FORMAT_UNDEFINED) {
+				swapchainFormat.format = VK_FORMAT_R8G8B8A8_UNORM;
+				swapchainFormat.colorSpace = surfaceFormats[0].colorSpace;
+			} else {
+				b8 found = false;
+				for (u64 i = 0; i < surfaceFormatCount; i++) {
+					if (surfaceFormats[i].format == VK_FORMAT_B8G8R8A8_SRGB && surfaceFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+						swapchainFormat = surfaceFormats[i];
+						found = true;
+						break;
+					}
 				}
-			}
 
-			if (!found) {
-				swapchainFormat = surfaceFormats[0];
+				if (!found) {
+					swapchainFormat = surfaceFormats[0];
+				}
 			}
 		}
 
@@ -513,8 +531,8 @@ int main(int argc, char** argv) {
 
 		u32 imageCount = 0;
 		VkSurfaceTransformFlagBitsKHR transform = 0;
+		VkSurfaceCapabilitiesKHR surfaceCapabilities = {};
 		{
-			VkSurfaceCapabilitiesKHR surfaceCapabilities = {};
 			VkCall(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities));
 
 			if (surfaceCapabilities.currentExtent.width != ~0u && surfaceCapabilities.currentExtent.height != ~0u) {
@@ -538,6 +556,15 @@ int main(int argc, char** argv) {
 			transform = surfaceCapabilities.currentTransform;
 		}
 
+		VkCompositeAlphaFlagsKHR compositeAlpha =
+			  (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR)
+			? VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR
+			: (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR)
+			? VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR
+			: (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR)
+			? VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR
+			: VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
+
 		VkCall(vkCreateSwapchainKHR(device, &(VkSwapchainCreateInfoKHR){
 			.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
 			.surface = surface,
@@ -551,13 +578,13 @@ int main(int argc, char** argv) {
 			.queueFamilyIndexCount = graphicsQueueFamilyIndex != presentQueueFamilyIndex ? 2 : 1,
 			.pQueueFamilyIndices = (u32[2]){ graphicsQueueFamilyIndex, presentQueueFamilyIndex },
 			.preTransform = transform,
-			.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+			.compositeAlpha = compositeAlpha,
 			.presentMode = swapchainPresentMode,
 			.clipped = VK_TRUE,
 			.oldSwapchain = swapchain,
 		}, NULL, &swapchain));
 	}
-	ASSERT(swapchain);
+	ASSERT(swapchain != VK_NULL_HANDLE);
 
 	u32 swapchainImageCount = 0;
 	VkCall(vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, NULL));
@@ -567,6 +594,8 @@ int main(int argc, char** argv) {
 	u32 swapchainImageViewCount = swapchainImageCount;
 	VkImageView swapchainImageViews[swapchainImageViewCount];
 	for (u64 i = 0; i < swapchainImageViewCount; i++) {
+		swapchainImageViews[i] = VK_NULL_HANDLE;
+
 		VkCall(vkCreateImageView(device, &(VkImageViewCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
 			.image = swapchainImages[i],
@@ -579,11 +608,11 @@ int main(int argc, char** argv) {
 			},
 		}, NULL, &swapchainImageViews[i]));
 
-		ASSERT(swapchainImageViews[i]);
+		ASSERT(swapchainImageViews[i] != VK_NULL_HANDLE);
 	}
 
-	VkSemaphore imageAvailableSemaphore = NULL;
-	VkSemaphore renderFinishedSemaphore = NULL;
+	VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
+	VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
 	{
 		VkCall(vkCreateSemaphore(device, &(VkSemaphoreCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
@@ -593,10 +622,10 @@ int main(int argc, char** argv) {
 			.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
 		}, NULL, &renderFinishedSemaphore));
 	}
-	ASSERT(imageAvailableSemaphore);
-	ASSERT(renderFinishedSemaphore);
+	ASSERT(imageAvailableSemaphore != VK_NULL_HANDLE);
+	ASSERT(renderFinishedSemaphore != VK_NULL_HANDLE);
 
-	VkCommandPool graphicsCommandPool = NULL;
+	VkCommandPool graphicsCommandPool = VK_NULL_HANDLE;
 	{
 		VkCall(vkCreateCommandPool(device, &(VkCommandPoolCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
@@ -604,9 +633,9 @@ int main(int argc, char** argv) {
 			.queueFamilyIndex = graphicsQueueFamilyIndex,
 		}, NULL, &graphicsCommandPool));
 	}
-	ASSERT(graphicsCommandPool);
+	ASSERT(graphicsCommandPool != VK_NULL_HANDLE);
 
-	VkCommandBuffer graphicsCommandBuffer = NULL;
+	VkCommandBuffer graphicsCommandBuffer = VK_NULL_HANDLE;
 	{
 		VkCall(vkAllocateCommandBuffers(device, &(VkCommandBufferAllocateInfo){
 			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
@@ -615,9 +644,9 @@ int main(int argc, char** argv) {
 			.commandBufferCount = 1,
 		}, &graphicsCommandBuffer));
 	}
-	ASSERT(graphicsCommandBuffer);
+	ASSERT(graphicsCommandBuffer != VK_NULL_HANDLE);
 
-	VkRenderPass renderPass = NULL;
+	VkRenderPass renderPass = VK_NULL_HANDLE;
 	{
 		VkCall(vkCreateRenderPass(device, &(VkRenderPassCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
@@ -629,7 +658,7 @@ int main(int argc, char** argv) {
 				.storeOp = VK_ATTACHMENT_STORE_OP_STORE,
 				.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
 				.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-				.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+				.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 				.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
 			},
 			.subpassCount = 1,
@@ -643,11 +672,13 @@ int main(int argc, char** argv) {
 			},
 		}, NULL, &renderPass));
 	}
-	ASSERT(renderPass);
+	ASSERT(renderPass != VK_NULL_HANDLE);
 
 	u32 swapchainFramebufferCount = swapchainImageCount;
 	VkFramebuffer swapchainFramebuffers[swapchainFramebufferCount];
 	for (u64 i = 0; i < swapchainFramebufferCount; i++) {
+		swapchainFramebuffers[i] = VK_NULL_HANDLE;
+
 		VkCall(vkCreateFramebuffer(device, &(VkFramebufferCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
 			.renderPass = renderPass,
@@ -658,10 +689,10 @@ int main(int argc, char** argv) {
 			.layers = 1,
 		}, NULL, &swapchainFramebuffers[i]));
 
-		ASSERT(swapchainFramebuffers[i]);
+		ASSERT(swapchainFramebuffers[i] != VK_NULL_HANDLE);
 	}
 
-	VkShaderModule vertexShader = NULL;
+	VkShaderModule vertexShader = VK_NULL_HANDLE;
 	{
 		FILE* file = fopen("triangle.vert.spirv", "rb");
 		ASSERT(file);
@@ -681,9 +712,9 @@ int main(int argc, char** argv) {
 			.pCode = cast(u32*) code,
 		}, NULL, &vertexShader));
 	}
-	ASSERT(vertexShader);
+	ASSERT(vertexShader != VK_NULL_HANDLE);
 
-	VkShaderModule fragmentShader = NULL;
+	VkShaderModule fragmentShader = VK_NULL_HANDLE;
 	{
 		FILE* file = fopen("triangle.frag.spirv", "rb");
 		ASSERT(file);
@@ -703,25 +734,25 @@ int main(int argc, char** argv) {
 			.pCode = cast(u32*) code,
 		}, NULL, &fragmentShader));
 	}
-	ASSERT(fragmentShader);
+	ASSERT(fragmentShader != VK_NULL_HANDLE);
 
-	VkPipelineLayout trianglePipelineLayout = NULL;
+	VkPipelineLayout trianglePipelineLayout = VK_NULL_HANDLE;
 	{
 		VkCall(vkCreatePipelineLayout(device, &(VkPipelineLayoutCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
 		}, NULL, &trianglePipelineLayout));
 	}
-	ASSERT(trianglePipelineLayout);
+	ASSERT(trianglePipelineLayout != VK_NULL_HANDLE);
 
-	VkPipelineCache trianglePipelineCache = NULL;
+	VkPipelineCache trianglePipelineCache = VK_NULL_HANDLE;
 	{
 		VkCall(vkCreatePipelineCache(device, &(VkPipelineCacheCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
 		}, NULL, &trianglePipelineCache));
 	}
-	ASSERT(trianglePipelineCache);
+	ASSERT(trianglePipelineCache != VK_NULL_HANDLE);
 
-	VkPipeline trianglePipeline = NULL;
+	VkPipeline trianglePipeline = VK_NULL_HANDLE;
 	{
 		VkCall(vkCreateGraphicsPipelines(device, trianglePipelineCache, 1, &(VkGraphicsPipelineCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
@@ -784,7 +815,7 @@ int main(int argc, char** argv) {
 			.renderPass = renderPass,
 		}, NULL, &trianglePipeline));
 	}
-	ASSERT(trianglePipeline);
+	ASSERT(trianglePipeline != VK_NULL_HANDLE);
 
 	while (WindowPollEvents()) {
 		u32 swapchainImageIndex = 0;
@@ -796,6 +827,33 @@ int main(int argc, char** argv) {
 			.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
 			.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
 		}));
+
+		vkCmdPipelineBarrier(
+			graphicsCommandBuffer,
+			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			VK_DEPENDENCY_BY_REGION_BIT,
+			0,
+			NULL,
+			0,
+			NULL,
+			1,
+			&(VkImageMemoryBarrier){
+				.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+				.srcAccessMask = 0,
+				.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+				.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+				.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+				.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+				.image = swapchainImages[swapchainImageIndex],
+				.subresourceRange = (VkImageSubresourceRange){
+					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+					.levelCount = VK_REMAINING_MIP_LEVELS,
+					.layerCount = VK_REMAINING_ARRAY_LAYERS,
+				},
+			}
+		);
 
 		const VkClearColorValue ClearColor = (VkClearColorValue){
 			{ 0.9f, 0.3f, 0.1f, 1.0f },
@@ -843,6 +901,33 @@ int main(int argc, char** argv) {
 		vkCmdDraw(graphicsCommandBuffer, 3, 1, 0, 0);
 
 		vkCmdEndRenderPass(graphicsCommandBuffer);
+
+		vkCmdPipelineBarrier(
+			graphicsCommandBuffer,
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_DEPENDENCY_BY_REGION_BIT,
+			0,
+			NULL,
+			0,
+			NULL,
+			1,
+			&(VkImageMemoryBarrier){
+				.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+				.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				.dstAccessMask = 0,
+				.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+				.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+				.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+				.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+				.image = swapchainImages[swapchainImageIndex],
+				.subresourceRange = (VkImageSubresourceRange){
+					.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+					.levelCount = VK_REMAINING_MIP_LEVELS,
+					.layerCount = VK_REMAINING_ARRAY_LAYERS,
+				},
+			}
+		);
 
 		VkCall(vkEndCommandBuffer(graphicsCommandBuffer));
 
