@@ -1,152 +1,20 @@
-#include "./Typedefs.h"
+#include "Typedefs.h"
+#include "Window.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #if defined(_WIN32) || defined(_WIN64)
-	#define PLATFORM_WINDOWS
 	#define VK_USE_PLATFORM_WIN32_KHR
+	#include "Win32Window.h"
 #else
 	#error This platform is not supported
 #endif
 
 #include <vulkan/vulkan.h>
 
-#define VkCall(x) ASSERT((x) == VK_SUCCESS)
-
-#if defined(PLATFORM_WINDOWS)
-
-#include <Windows.h>
-
-typedef struct {
-	HMODULE Instance;
-	HWND Handle;
-} *Window;
-
-LRESULT Win32WindowCallback(HWND windowHandle, UINT message, WPARAM wParam, LPARAM lParam) {
-	LRESULT result = 0;
-
-	Window window = cast(Window) GetWindowLongPtrA(windowHandle, GWLP_USERDATA);
-	if (window) {
-		switch (message) {
-			case WM_CLOSE:
-			case WM_QUIT: {
-				PostQuitMessage(0);
-			} break;
-
-			default: {
-				result = DefWindowProcA(window->Handle, message, wParam, lParam);
-			} break;
-		}
-	} else {
-		result = DefWindowProcA(windowHandle, message, wParam, lParam);
-	}
-
-	return result;
-}
-
-static b8 WindowClassInitialized = false;
-Window WindowCreate(u32 width, u32 height, const char* title) {
-	const char* WindowClassName = "TestRendererWindowClassName";
-
-	Window window = calloc(1, sizeof(*window));
-	window->Instance = GetModuleHandle(NULL);
-
-	if (!WindowClassInitialized) {
-		WNDCLASSEXA windowClass = {
-			.cbSize = sizeof(windowClass),
-			.lpfnWndProc = Win32WindowCallback,
-			.hInstance = window->Instance,
-			.hCursor = LoadCursor(NULL, IDC_ARROW),
-			.lpszClassName = WindowClassName,
-		};
-
-		if (!RegisterClassExA(&windowClass)) {
-			free(window);
-			return NULL;
-		}
-
-		WindowClassInitialized = true;
-	}
-
-	const DWORD windowStyle = WS_OVERLAPPEDWINDOW;
-
-	RECT windowRect = {};
-	windowRect.left = 100;
-	windowRect.right = windowRect.left + width;
-	windowRect.top = 100;
-	windowRect.bottom = windowRect.top + height;
-
-	AdjustWindowRect(&windowRect, windowStyle, false);
-
-	u32 windowWidth = windowRect.right - windowRect.left;
-	u32 windowHeight = windowRect.bottom - windowRect.top;
-
-	window->Handle = CreateWindowExA(
-		0,
-		WindowClassName,
-		title,
-		windowStyle,
-		CW_USEDEFAULT,
-		CW_USEDEFAULT,
-		windowWidth,
-		windowHeight,
-		NULL,
-		NULL,
-		window->Instance,
-		NULL
-	);
-
-	if (!window->Handle) {
-		free(window);
-		return NULL;
-	}
-
-	SetWindowLongPtrA(window->Handle, GWLP_USERDATA, (LONG_PTR)window);
-
-	return window;
-}
-
-void WindowDestroy(Window window) {
-	DestroyWindow(window->Handle);
-	free(window);
-}
-
-void WindowShow(Window window) {
-	ShowWindow(window->Handle, SW_SHOW);
-}
-
-void WindowGetSize(Window window, u32* width, u32* height) {
-	RECT clientRect = {};
-	GetClientRect(window->Handle, &clientRect);
-
-	if (width) {
-		*width = cast(u32) (clientRect.right - clientRect.left);
-	}
-
-	if (height) {
-		*height = cast(u32) (clientRect.bottom - clientRect.top);
-	}
-}
-
-b8 WindowPollEvents() {
-	MSG message;
-	while (PeekMessageA(&message, NULL, 0, 0, PM_REMOVE)) {
-		if (message.message == WM_QUIT) {
-			return false;
-		}
-
-		TranslateMessage(&message);
-		DispatchMessageA(&message);
-	}
-
-	return true;
-}
-
-#else
-	#error This platform is not supported
-#endif
+#include "VulkanUtil.h"
 
 #if defined(_DEBUG)
 
@@ -167,13 +35,13 @@ VkBool32 VKAPI_CALL DebugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEX
 #endif
 
 int main(int argc, char** argv) {
-	const u32 RequiredVulkanAPIVersion = VK_API_VERSION_1_2;
+	const u32 VulkanAPIVersion = VK_API_VERSION_1_2;
 
 	{
 		u32 apiVersion = 0;
 		VkCall(vkEnumerateInstanceVersion(&apiVersion));
 
-		if (apiVersion < RequiredVulkanAPIVersion) {
+		if (apiVersion < VulkanAPIVersion) {
 			printf(
 				"This renderer requires a vulkan api version >= 1.2.0\nYou have %d.%d.%d\n",
 				VK_VERSION_MAJOR(apiVersion),
@@ -185,15 +53,15 @@ int main(int argc, char** argv) {
 		}
 	}
 
-	const char* const InstanceLayers[] = {
+	const char* InstanceLayers[] = {
 	#if defined(_DEBUG)
 		"VK_LAYER_KHRONOS_validation",
 	#endif
 	};
 
-	const char* const InstanceExtentions[] = {
+	const char* InstanceExtensions[] = {
 		VK_KHR_SURFACE_EXTENSION_NAME,
-	#if defined(PLATFORM_WINDOWS)
+	#if defined(VK_USE_PLATFORM_WIN32_KHR)
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 	#else
 		#error This platform is not supported
@@ -204,74 +72,15 @@ int main(int argc, char** argv) {
 	};
 
 	VkInstance instance = VK_NULL_HANDLE;
-	{
-		b8 hasLayers = true;
-		{
-			u32 layerPropertiesCount = 0;
-			VkCall(vkEnumerateInstanceLayerProperties(&layerPropertiesCount, NULL));
-			VkLayerProperties layerProperties[layerPropertiesCount];
-			VkCall(vkEnumerateInstanceLayerProperties(&layerPropertiesCount, layerProperties));
-
-			for (u64 i = 0; i < sizeof(InstanceLayers) / sizeof(InstanceLayers[0]); i++) {
-				b8 found = false;
-
-				for (u64 j = 0; j < layerPropertiesCount; j++) {
-					if (strcmp(InstanceLayers[i], layerProperties[j].layerName) == 0) {
-						found = true;
-						break;
-					}
-				}
-
-				if (!found) {
-					hasLayers = false;
-					break;
-				}
-			}
-		}
-		ASSERT(hasLayers);
-
-		b8 hasExtentions = true;
-		{
-			u32 extensionPropertiesCount = 0;
-			VkCall(vkEnumerateInstanceExtensionProperties(NULL, &extensionPropertiesCount, NULL));
-			VkExtensionProperties extensionProperties[extensionPropertiesCount];
-			VkCall(vkEnumerateInstanceExtensionProperties(NULL, &extensionPropertiesCount, extensionProperties));
-
-			for (u64 i = 0; i < sizeof(InstanceExtentions) / sizeof(InstanceExtentions[0]); i++) {
-				b8 found = false;
-
-				for (u64 j = 0; j < extensionPropertiesCount; j++) {
-					if (strcmp(InstanceExtentions[i], extensionProperties[j].extensionName) == 0) {
-						found = true;
-						break;
-					}
-				}
-
-				if (!found) {
-					hasExtentions = false;
-					break;
-				}
-			}
-		}
-		ASSERT(hasExtentions);
-
-		VkCall(vkCreateInstance(&(VkInstanceCreateInfo){
-			.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-			.pApplicationInfo = &(VkApplicationInfo){
-				.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-				.pApplicationName = "Test Renderer",
-				.applicationVersion = VK_MAKE_VERSION(0, 1, 0),
-				.pEngineName = "Test Renderer Engine",
-				.engineVersion = VK_MAKE_VERSION(0, 1, 0),
-				.apiVersion = RequiredVulkanAPIVersion,
-			},
-			.enabledLayerCount = sizeof(InstanceLayers) / sizeof(InstanceLayers[0]),
-			.ppEnabledLayerNames = InstanceLayers,
-			.enabledExtensionCount = sizeof(InstanceExtentions) / sizeof(InstanceExtentions[0]),
-			.ppEnabledExtensionNames = InstanceExtentions,
-		}, NULL, &instance));
+	if (!CreateVulkanInstance(
+			&instance,
+			VulkanAPIVersion,
+			InstanceLayers, sizeof(InstanceLayers) / sizeof(InstanceLayers[0]),
+			InstanceExtensions, sizeof(InstanceExtensions) / sizeof(InstanceExtensions[0]))
+	) {
+		printf("Unable to create vulkan instance!\n");
+		return -1;
 	}
-	ASSERT(instance != VK_NULL_HANDLE);
 
 #if defined(_DEBUG)
 	VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
@@ -292,188 +101,56 @@ int main(int argc, char** argv) {
 	ASSERT(debugMessenger != VK_NULL_HANDLE);
 #endif
 
-	Window window = NULL;
-	{
-		window = WindowCreate(1280, 720, "Test Renderer");
+	Window window = Window_Create(1280, 720, "Test Renderer");
+	if (window == NULL) {
+		printf("Unable to create window!\n");
+		return -1;
 	}
-	ASSERT(window);
 
-	WindowShow(window);
+	Window_Show(window);
 
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
-	{
-	#if defined(PLATFORM_WINDOWS)
-		VkCall(vkCreateWin32SurfaceKHR(instance, &(VkWin32SurfaceCreateInfoKHR){
-			.sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
-			.hinstance = window->Instance,
-			.hwnd = window->Handle,
-		}, NULL, &surface));
-	#else
-		#error This platform is not supported
-	#endif
+	if (!CreateVulkanSurface(&surface, instance, window)) {
+		printf("Unable to create surface!\n");
+		return -1;
 	}
-	ASSERT(surface != VK_NULL_HANDLE);
 
-	const char* const DeviceLayers[] = {
+	const char* DeviceLayers[] = {
 	};
 
-	const char* const DeviceExtentions[] = {
+	const char* DeviceExtensions[] = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 	};
 
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	u32 graphicsQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	u32 presentQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	{
-		u32 physicalDeviceCount = 0;
-		VkCall(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, NULL));
-		VkPhysicalDevice physicalDevices[physicalDeviceCount];
-		VkCall(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices));
-
-		for (u64 i = 0; i < physicalDeviceCount; i++) {
-			VkPhysicalDeviceProperties properties = {};
-			vkGetPhysicalDeviceProperties(physicalDevices[i], &properties);
-
-			if (properties.apiVersion >= RequiredVulkanAPIVersion) {
-				b8 hasLayers = true;
-				{
-					u32 layerPropertiesCount = 0;
-					VkCall(vkEnumerateDeviceLayerProperties(physicalDevices[i], &layerPropertiesCount, NULL));
-					VkLayerProperties layerProperties[layerPropertiesCount];
-					VkCall(vkEnumerateDeviceLayerProperties(physicalDevices[i], &layerPropertiesCount, layerProperties));
-
-					for (u64 i = 0; i < sizeof(DeviceLayers) / sizeof(DeviceLayers[0]); i++) {
-						b8 found = false;
-
-						for (u64 j = 0; j < layerPropertiesCount; j++) {
-							if (strcmp(DeviceLayers[i], layerProperties[j].layerName) == 0) {
-								found = true;
-								break;
-							}
-						}
-
-						if (!found) {
-							hasLayers = false;
-							break;
-						}
-					}
-				}
-
-				b8 hasExtentions = true;
-				{
-					u32 extensionPropertiesCount = 0;
-					VkCall(vkEnumerateDeviceExtensionProperties(physicalDevices[i], NULL, &extensionPropertiesCount, NULL));
-					VkExtensionProperties extensionProperties[extensionPropertiesCount];
-					VkCall(vkEnumerateDeviceExtensionProperties(physicalDevices[i], NULL, &extensionPropertiesCount, extensionProperties));
-
-					for (u64 i = 0; i < sizeof(DeviceExtentions) / sizeof(DeviceExtentions[0]); i++) {
-						b8 found = false;
-
-						for (u64 j = 0; j < extensionPropertiesCount; j++) {
-							if (strcmp(DeviceExtentions[i], extensionProperties[j].extensionName) == 0) {
-								found = true;
-								break;
-							}
-						}
-
-						if (!found) {
-							hasExtentions = false;
-							break;
-						}
-					}
-				}
-
-				u32 tempGraphicsQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-				u32 tempPresentQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-				{
-					u32 queueFamilyPropertiesCount = 0;
-					vkGetPhysicalDeviceQueueFamilyProperties(physicalDevices[i], &queueFamilyPropertiesCount, NULL);
-					VkQueueFamilyProperties queueFamilyProperties[queueFamilyPropertiesCount];
-					vkGetPhysicalDeviceQueueFamilyProperties(physicalDevices[i], &queueFamilyPropertiesCount, queueFamilyProperties);
-
-					for (u64 i = 0; i < queueFamilyPropertiesCount; i++) {
-						if (queueFamilyProperties[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-							tempGraphicsQueueFamilyIndex = i;
-
-							VkBool32 presentSupport = false;
-							VkCall(vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevices[i], i, surface, &presentSupport));
-							if (presentSupport &&
-							#if defined(PLATFORM_WINDOWS)
-								vkGetPhysicalDeviceWin32PresentationSupportKHR(physicalDevices[i], i)
-							#else
-								#error This platform is not supported
-							#endif
-							) {
-								tempPresentQueueFamilyIndex = i;
-								break;
-							}
-						}
-					}
-
-					if (tempPresentQueueFamilyIndex == VK_QUEUE_FAMILY_IGNORED) {
-						for (u64 i = 0; i < queueFamilyPropertiesCount; i++) {
-							VkBool32 presentSupport = false;
-							VkCall(vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevices[i], i, surface, &presentSupport));
-							if (presentSupport && 
-							#if defined(PLATFORM_WINDOWS)
-								vkGetPhysicalDeviceWin32PresentationSupportKHR(physicalDevices[i], i)
-							#else
-								#error This platform is not supported
-							#endif
-							) {
-								tempPresentQueueFamilyIndex = i;
-								break;
-							}
-						}
-					}
-				}
-
-				if (hasLayers &&
-					hasExtentions &&
-					tempGraphicsQueueFamilyIndex != VK_QUEUE_FAMILY_IGNORED &&
-					tempPresentQueueFamilyIndex != VK_QUEUE_FAMILY_IGNORED
-				) {
-					physicalDevice = physicalDevices[i];
-					graphicsQueueFamilyIndex = tempGraphicsQueueFamilyIndex;
-					presentQueueFamilyIndex = tempPresentQueueFamilyIndex;
-
-					if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
-						break;
-					}
-				}
-			}
-		}
+	if (!PickVulkanPhysicalDevice(
+			&physicalDevice,
+			instance,
+			surface,
+			VulkanAPIVersion,
+			DeviceLayers, sizeof(DeviceLayers) / sizeof(DeviceLayers[0]),
+			DeviceExtensions, sizeof(DeviceExtensions) / sizeof(DeviceExtensions[0]),
+			&graphicsQueueFamilyIndex,
+			&presentQueueFamilyIndex)
+	) {
+		printf("Unable to find suitable physical device!\n");
+		return -1;
 	}
-	ASSERT(physicalDevice != VK_NULL_HANDLE);
-	ASSERT(graphicsQueueFamilyIndex != VK_QUEUE_FAMILY_IGNORED);
-	ASSERT(presentQueueFamilyIndex != VK_QUEUE_FAMILY_IGNORED);
 
 	VkDevice device = VK_NULL_HANDLE;
-	{
-		VkCall(vkCreateDevice(physicalDevice, &(VkDeviceCreateInfo){
-			.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-			.queueCreateInfoCount = graphicsQueueFamilyIndex == presentQueueFamilyIndex ? 1 : 2,
-			.pQueueCreateInfos = (VkDeviceQueueCreateInfo[2]){
-				{
-					.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-					.queueFamilyIndex = graphicsQueueFamilyIndex,
-					.queueCount = 1,
-					.pQueuePriorities = (float[1]){ 1.0f },
-				},
-				{
-					.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-					.queueFamilyIndex = presentQueueFamilyIndex,
-					.queueCount = 1,
-					.pQueuePriorities = (float[1]){ 1.0f },
-				}
-			},
-			.enabledLayerCount = sizeof(DeviceLayers) / sizeof(DeviceLayers[0]),
-			.ppEnabledLayerNames = DeviceLayers,
-			.enabledExtensionCount = sizeof(DeviceExtentions) / sizeof(DeviceExtentions[0]),
-			.ppEnabledExtensionNames = DeviceExtentions,
-		}, NULL, &device));
+	if (!CreateVulkanDevice(
+			&device,
+			physicalDevice,
+			DeviceLayers, sizeof(DeviceLayers) / sizeof(DeviceLayers[0]),
+			DeviceExtensions, sizeof(DeviceExtensions) / sizeof(DeviceExtensions[0]),
+			graphicsQueueFamilyIndex,
+			presentQueueFamilyIndex)
+	) {
+		printf("Unable to create device!\n");
+		return -1;
 	}
-	ASSERT(device != VK_NULL_HANDLE);
 
 	VkQueue graphicsQueue = VK_NULL_HANDLE;
 	VkQueue presentQueue = VK_NULL_HANDLE;
@@ -539,7 +216,7 @@ int main(int argc, char** argv) {
 				swapchainExtent = surfaceCapabilities.currentExtent;
 			} else {
 				u32 width = 0, height = 0;
-				WindowGetSize(window, &width, &height);
+				Window_GetSize(window, &width, &height);
 
 				width = max(surfaceCapabilities.minImageExtent.width, min(surfaceCapabilities.maxImageExtent.width, width));
 				height = max(surfaceCapabilities.minImageExtent.height, min(surfaceCapabilities.maxImageExtent.height, height));
@@ -817,7 +494,7 @@ int main(int argc, char** argv) {
 	}
 	ASSERT(trianglePipeline != VK_NULL_HANDLE);
 
-	while (WindowPollEvents()) {
+	while (Window_PollEvents()) {
 		u32 swapchainImageIndex = 0;
 		VkCall(vkAcquireNextImageKHR(device, swapchain, ~0ull, imageAvailableSemaphore, NULL, &swapchainImageIndex));
 
@@ -876,7 +553,7 @@ int main(int argc, char** argv) {
 		}, VK_SUBPASS_CONTENTS_INLINE);
 
 		u32 windowWidth = 0, windowHeight = 0; // TODO: Do not get this every frame
-		WindowGetSize(window, &windowWidth, &windowHeight);
+		Window_GetSize(window, &windowWidth, &windowHeight);
 
 		vkCmdSetViewport(graphicsCommandBuffer, 0, 1, &(VkViewport){
 			.x = 0.0f,
@@ -983,7 +660,7 @@ int main(int argc, char** argv) {
 	vkDestroyDevice(device, NULL);
 
 	vkDestroySurfaceKHR(instance, surface, NULL);
-	WindowDestroy(window);
+	Window_Destroy(window);
 
 #if defined(_DEBUG)
 	{
