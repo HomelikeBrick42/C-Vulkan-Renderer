@@ -830,7 +830,7 @@ int main(int argc, char** argv) {
 
 		vkCmdPipelineBarrier(
 			graphicsCommandBuffer,
-			VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 			VK_DEPENDENCY_BY_REGION_BIT,
 			0,
