@@ -53,7 +53,10 @@ int main(int argc, char** argv) {
 	Mesh mesh = {};
 	{
 		ObjMesh objMesh = {};
-		ObjMesh_Create(&objMesh, "Cube.obj");
+		if (!ObjMesh_Create(&objMesh, "Cube.obj")) {
+			printf("Unable to load Cube.obj\n");
+			return -1;
+		}
 
 		for (u64 i = 0; i < objMesh.FaceCount; i++) {
 			mesh.VertexCount += 3;
