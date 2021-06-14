@@ -39,14 +39,14 @@ VkBool32 VKAPI_CALL DebugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEX
 typedef struct Vertex_t {
 	Vector3 Position;
 	Vector3 Normal;
-	Vector3 TexCoord;
+	Vector2 TexCoord;
 } Vertex;
 
 typedef struct Mesh_t {
 	Vertex* Vertices;
-	u64 VertexLength;
+	u64 VertexCount;
 	u32* Indices;
-	u64 IndexLength;
+	u64 IndexCount;
 } Mesh;
 
 int main(int argc, char** argv) {
@@ -56,6 +56,29 @@ int main(int argc, char** argv) {
 		ObjMesh_Create(&objMesh, "Cube.obj");
 
 		for (u64 i = 0; i < objMesh.FaceCount; i++) {
+			mesh.VertexCount += 3;
+			mesh.Vertices = realloc(mesh.Vertices, mesh.VertexCount * sizeof(mesh.Vertices[0]));
+			ASSERT(mesh.Vertices);
+
+			mesh.Vertices[mesh.VertexCount - 3].Position = objMesh.Positions[objMesh.Faces[i].PositionIndices[0]];
+			mesh.Vertices[mesh.VertexCount - 2].Position = objMesh.Positions[objMesh.Faces[i].PositionIndices[1]];
+			mesh.Vertices[mesh.VertexCount - 1].Position = objMesh.Positions[objMesh.Faces[i].PositionIndices[2]];
+			
+			mesh.Vertices[mesh.VertexCount - 3].Normal = objMesh.Normals[objMesh.Faces[i].NormalIndices[0]];
+			mesh.Vertices[mesh.VertexCount - 2].Normal = objMesh.Normals[objMesh.Faces[i].NormalIndices[1]];
+			mesh.Vertices[mesh.VertexCount - 1].Normal = objMesh.Normals[objMesh.Faces[i].NormalIndices[2]];
+			
+			mesh.Vertices[mesh.VertexCount - 3].TexCoord = objMesh.TexCoords[objMesh.Faces[i].TexCoordIndices[0]];
+			mesh.Vertices[mesh.VertexCount - 2].TexCoord = objMesh.TexCoords[objMesh.Faces[i].TexCoordIndices[1]];
+			mesh.Vertices[mesh.VertexCount - 1].TexCoord = objMesh.TexCoords[objMesh.Faces[i].TexCoordIndices[2]];
+		}
+
+		for (u64 i = 0; i < mesh.VertexCount; i++) {
+			mesh.IndexCount++;
+			mesh.Indices = realloc(mesh.Indices, mesh.IndexCount * sizeof(mesh.Indices[0]));
+			ASSERT(mesh.Indices);
+
+			mesh.Indices[mesh.IndexCount - 1] = i;
 		}
 
 		ObjMesh_Destory(&objMesh);

@@ -3,7 +3,7 @@
 #include "Typedefs.h"
 
 typedef struct ObjMaterial_t {
-	const char* Name;
+	char* Name;
 
 	Vector3 Ka; // Ambient
 	Vector3 Kd; // Diffuse
@@ -25,7 +25,7 @@ typedef struct ObjFace_t {
 } ObjFace;
 
 typedef struct ObjObject_t {
-	const char* Name;
+	char* Name;
 
 	u64 FaceOffset;
 	u64 FaceCount;

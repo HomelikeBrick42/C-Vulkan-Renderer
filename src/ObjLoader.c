@@ -142,7 +142,7 @@ static b8 ObjMesh_LoadMeshes(ObjMesh* mesh, char* source) {
 				return false;
 			}
 
-			fread(materialSource, sizeof(char), materialSourceLength, file);
+			materialSourceLength = fread(materialSource, sizeof(char), materialSourceLength, file);
 			materialSource[materialSourceLength] = '\0';
 
 			fclose(file);
@@ -327,7 +327,7 @@ b8 ObjMesh_Create(ObjMesh* mesh, const char* filepath) {
 		return false;
 	}
 
-	fread(source, sizeof(char), sourceLength, file);
+	sourceLength = fread(source, sizeof(char), sourceLength, file);
 	source[sourceLength] = '\0';
 
 	fclose(file);
@@ -342,5 +342,33 @@ b8 ObjMesh_Create(ObjMesh* mesh, const char* filepath) {
 }
 
 void ObjMesh_Destory(ObjMesh* mesh) {
-	ASSERT(false);
+	if (mesh->Faces) {
+		free(mesh->Faces);
+	}
+	
+	if (mesh->Positions) {
+		free(mesh->Positions);
+	}
+
+	if (mesh->Normals) {
+		free(mesh->Normals);
+	}
+
+	if (mesh->TexCoords) {
+		free(mesh->TexCoords);
+	}
+
+	if (mesh->Materials) {
+		for (u64 i = 0; i < mesh->MaterialCount; i++) {
+			free(mesh->Materials[i].Name);
+		}
+		free(mesh->Materials);
+	}
+
+	if (mesh->Objects) {
+		for (u64 i = 0; i < mesh->ObjectCount; i++) {
+			free(mesh->Objects[i].Name);
+		}
+		free(mesh->Objects);
+	}
 }
