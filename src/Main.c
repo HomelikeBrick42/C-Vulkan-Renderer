@@ -18,19 +18,6 @@
 #include "VulkanUtil.h"
 #include "VulkanSwapchain.h"
 
-typedef struct Vertex_t {
-	Vector3 Position;
-	Vector3 Normal;
-	Vector3 TexCoord;
-} Vertex;
-
-typedef struct Mesh_t {
-	Vertex* Vertices;
-	u64 VertexLength;
-	u32* Indices;
-	u64 IndexLength;
-} Mesh;
-
 #if defined(_DEBUG)
 
 VkBool32 VKAPI_CALL DebugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageTypes, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) {
@@ -49,7 +36,31 @@ VkBool32 VKAPI_CALL DebugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEX
 
 #endif
 
+typedef struct Vertex_t {
+	Vector3 Position;
+	Vector3 Normal;
+	Vector3 TexCoord;
+} Vertex;
+
+typedef struct Mesh_t {
+	Vertex* Vertices;
+	u64 VertexLength;
+	u32* Indices;
+	u64 IndexLength;
+} Mesh;
+
 int main(int argc, char** argv) {
+	Mesh mesh = {};
+	{
+		ObjMesh objMesh = {};
+		ObjMesh_Create(&objMesh, "Cube.obj");
+
+		for (u64 i = 0; i < objMesh.FaceCount; i++) {
+		}
+
+		ObjMesh_Destory(&objMesh);
+	}
+
 	const u32 VulkanAPIVersion = VK_API_VERSION_1_2;
 
 	{
