@@ -124,7 +124,7 @@ b8 VulkanSwapchain_Create(
 		return false;
 	}
 
-	swapchain->Images = malloc(swapchain->ImageCount * sizeof(*swapchain->Images));
+	swapchain->Images = malloc(swapchain->ImageCount * sizeof(swapchain->Images[0]));
 	for (u32 i = 0; i < swapchain->ImageCount; i++) {
 		swapchain->Images[i] = VK_NULL_HANDLE;
 	}
@@ -136,7 +136,7 @@ b8 VulkanSwapchain_Create(
 		}
 	}
 
-	swapchain->ImageViews = malloc(swapchain->ImageCount * sizeof(*swapchain->ImageViews));
+	swapchain->ImageViews = malloc(swapchain->ImageCount * sizeof(swapchain->ImageViews[0]));
 	for (u32 i = 0; i < swapchain->ImageCount; i++) {
 		swapchain->ImageViews[i] = VK_NULL_HANDLE;
 
@@ -157,7 +157,7 @@ b8 VulkanSwapchain_Create(
 		}
 	}
 
-	swapchain->Framebuffers = malloc(swapchain->ImageCount * sizeof(*swapchain->Framebuffers));
+	swapchain->Framebuffers = malloc(swapchain->ImageCount * sizeof(swapchain->Framebuffers[0]));
 	for (u32 i = 0; i < swapchain->ImageCount; i++) {
 		swapchain->Framebuffers[i] = VK_NULL_HANDLE;
 

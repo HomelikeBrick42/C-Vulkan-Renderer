@@ -31,7 +31,7 @@ static b8 WindowClassInitialized = false;
 Window Window_Create(u32 width, u32 height, const char* title) {
 	const char* WindowClassName = "TestRendererWindowClassName"; // TODO:
 
-	Window window = calloc(1, sizeof(*window));
+	Window window = calloc(1, sizeof(window[0]));
 	window->Instance = GetModuleHandle(NULL);
 
 	if (!WindowClassInitialized) {

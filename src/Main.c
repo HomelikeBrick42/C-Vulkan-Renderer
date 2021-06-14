@@ -1,5 +1,6 @@
 #include "Typedefs.h"
 #include "Window.h"
+#include "ObjLoader.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +17,19 @@
 
 #include "VulkanUtil.h"
 #include "VulkanSwapchain.h"
+
+typedef struct Vertex_t {
+	Vector3 Position;
+	Vector3 Normal;
+	Vector3 TexCoord;
+} Vertex;
+
+typedef struct Mesh_t {
+	Vertex* Vertices;
+	u64 VertexLength;
+	u32* Indices;
+	u64 IndexLength;
+} Mesh;
 
 #if defined(_DEBUG)
 
@@ -227,8 +241,8 @@ int main(int argc, char** argv) {
 		ASSERT(length > 0);
 		fseek(file, 0, SEEK_SET);
 
-		u8 code[length];
-		ASSERT(fread(code, sizeof(u8), length, file) == length);
+		char code[length];
+		ASSERT(fread(code, sizeof(code[0]), length, file) == length);
 		fclose(file);
 
 		VkCall(vkCreateShaderModule(device, &(VkShaderModuleCreateInfo){
@@ -250,7 +264,7 @@ int main(int argc, char** argv) {
 		fseek(file, 0, SEEK_SET);
 
 		u8 code[length];
-		ASSERT(fread(code, sizeof(u8), length, file) == length);
+		ASSERT(fread(code, sizeof(code[0]), length, file) == length);
 		fclose(file);
 
 		VkCall(vkCreateShaderModule(device, &(VkShaderModuleCreateInfo){
