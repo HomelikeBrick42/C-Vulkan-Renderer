@@ -49,44 +49,84 @@ typedef struct Mesh_t {
 	u64 IndexCount;
 } Mesh;
 
-int main(int argc, char** argv) {
-	Mesh mesh = {};
-	{
-		ObjMesh objMesh = {};
-		if (!ObjMesh_Create(&objMesh, "Cube.obj")) {
-			printf("Unable to load Cube.obj\n");
-			return -1;
+typedef struct VulkanBuffer_t {
+	VkBuffer Buffer;
+	VkDevice Device;
+	VkPhysicalDevice PhysicalDevice;
+	VkDeviceMemory Memory;
+	void* Data;
+	u64 Size;
+
+	VkBufferUsageFlags UsageFlags;
+} VulkanBuffer;
+
+static u32 VulkanBuffer_SelectMemoryType(const VkPhysicalDeviceMemoryProperties* memoryProperties, u32 memoryTypeBits, VkMemoryPropertyFlags propertyFlags) {
+	for (u32 i = 0; i < memoryProperties->memoryTypeCount; i++) {
+		if ((memoryTypeBits & (1 << i)) != 0 && (memoryProperties->memoryTypes[i].propertyFlags & propertyFlags) == propertyFlags) {
+			return i;
 		}
-
-		for (u64 i = 0; i < objMesh.FaceCount; i++) {
-			mesh.VertexCount += 3;
-			mesh.Vertices = realloc(mesh.Vertices, mesh.VertexCount * sizeof(mesh.Vertices[0]));
-			ASSERT(mesh.Vertices);
-
-			mesh.Vertices[mesh.VertexCount - 3].Position = objMesh.Positions[objMesh.Faces[i].PositionIndices[0]];
-			mesh.Vertices[mesh.VertexCount - 2].Position = objMesh.Positions[objMesh.Faces[i].PositionIndices[1]];
-			mesh.Vertices[mesh.VertexCount - 1].Position = objMesh.Positions[objMesh.Faces[i].PositionIndices[2]];
-			
-			mesh.Vertices[mesh.VertexCount - 3].Normal = objMesh.Normals[objMesh.Faces[i].NormalIndices[0]];
-			mesh.Vertices[mesh.VertexCount - 2].Normal = objMesh.Normals[objMesh.Faces[i].NormalIndices[1]];
-			mesh.Vertices[mesh.VertexCount - 1].Normal = objMesh.Normals[objMesh.Faces[i].NormalIndices[2]];
-			
-			mesh.Vertices[mesh.VertexCount - 3].TexCoord = objMesh.TexCoords[objMesh.Faces[i].TexCoordIndices[0]];
-			mesh.Vertices[mesh.VertexCount - 2].TexCoord = objMesh.TexCoords[objMesh.Faces[i].TexCoordIndices[1]];
-			mesh.Vertices[mesh.VertexCount - 1].TexCoord = objMesh.TexCoords[objMesh.Faces[i].TexCoordIndices[2]];
-		}
-
-		for (u64 i = 0; i < mesh.VertexCount; i++) {
-			mesh.IndexCount++;
-			mesh.Indices = realloc(mesh.Indices, mesh.IndexCount * sizeof(mesh.Indices[0]));
-			ASSERT(mesh.Indices);
-
-			mesh.Indices[mesh.IndexCount - 1] = i;
-		}
-
-		ObjMesh_Destory(&objMesh);
 	}
 
+	return ~0u;
+}
+
+b8 VulkanBuffer_Create(VulkanBuffer* buffer, VkDevice device, VkPhysicalDevice physicalDevice, u64 size, VkBufferUsageFlags usageFlags) {
+	buffer->Buffer = VK_NULL_HANDLE;
+	buffer->Device = device;
+	buffer->PhysicalDevice = physicalDevice;
+	buffer->Memory = VK_NULL_HANDLE;
+	buffer->Data = NULL;
+	buffer->Size = size;
+	buffer->UsageFlags = usageFlags;
+
+	VkCheck(vkCreateBuffer(device, &(VkBufferCreateInfo){
+		.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+		.size = size,
+		.usage = buffer->UsageFlags,
+		.sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+	}, NULL, &buffer->Buffer));
+
+	if (buffer->Buffer == VK_NULL_HANDLE) {
+		return false;
+	}
+
+	VkPhysicalDeviceMemoryProperties memoryProperties = {};
+	vkGetPhysicalDeviceMemoryProperties(buffer->PhysicalDevice, &memoryProperties);
+
+	VkMemoryRequirements memoryRequirements = {};
+	vkGetBufferMemoryRequirements(buffer->Device, buffer->Buffer, &memoryRequirements);
+	
+	u32 memoryTypeIndex = VulkanBuffer_SelectMemoryType(&memoryProperties, memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	ASSERT(memoryTypeIndex != ~0u);
+
+	VkCheck(vkAllocateMemory(buffer->Device, &(VkMemoryAllocateInfo){
+		.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+		.allocationSize = memoryRequirements.size,
+		.memoryTypeIndex = memoryTypeIndex,
+	}, NULL, &buffer->Memory));
+
+	if (buffer->Memory == VK_NULL_HANDLE) {
+		return false;
+	}
+
+	VkCheck(vkBindBufferMemory(buffer->Device, buffer->Buffer, buffer->Memory, 0));
+
+	VkCheck(vkMapMemory(buffer->Device, buffer->Memory, 0, buffer->Size, 0, &buffer->Data));
+	
+	if (buffer->Data == NULL) {
+		return false;
+	}
+
+	return true;
+}
+
+void VulkanBuffer_Destroy(VulkanBuffer* buffer) {
+	vkUnmapMemory(buffer->Device, buffer->Memory);
+	vkFreeMemory(buffer->Device, buffer->Memory, NULL);
+	vkDestroyBuffer(buffer->Device, buffer->Buffer, NULL);
+}
+
+int main(int argc, char** argv) {
 	const u32 VulkanAPIVersion = VK_API_VERSION_1_2;
 
 	{
@@ -312,25 +352,25 @@ int main(int argc, char** argv) {
 	}
 	ASSERT(fragmentShader != VK_NULL_HANDLE);
 
-	VkPipelineLayout trianglePipelineLayout = VK_NULL_HANDLE;
+	VkPipelineLayout meshPipelineLayout = VK_NULL_HANDLE;
 	{
 		VkCall(vkCreatePipelineLayout(device, &(VkPipelineLayoutCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-		}, NULL, &trianglePipelineLayout));
+		}, NULL, &meshPipelineLayout));
 	}
-	ASSERT(trianglePipelineLayout != VK_NULL_HANDLE);
+	ASSERT(meshPipelineLayout != VK_NULL_HANDLE);
 
-	VkPipelineCache trianglePipelineCache = VK_NULL_HANDLE;
+	VkPipelineCache meshPipelineCache = VK_NULL_HANDLE;
 	{
 		VkCall(vkCreatePipelineCache(device, &(VkPipelineCacheCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
-		}, NULL, &trianglePipelineCache));
+		}, NULL, &meshPipelineCache));
 	}
-	ASSERT(trianglePipelineCache != VK_NULL_HANDLE);
+	ASSERT(meshPipelineCache != VK_NULL_HANDLE);
 
-	VkPipeline trianglePipeline = VK_NULL_HANDLE;
+	VkPipeline meshPipeline = VK_NULL_HANDLE;
 	{
-		VkCall(vkCreateGraphicsPipelines(device, trianglePipelineCache, 1, &(VkGraphicsPipelineCreateInfo){
+		VkCall(vkCreateGraphicsPipelines(device, meshPipelineCache, 1, &(VkGraphicsPipelineCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
 			.stageCount = 2,
 			.pStages = (VkPipelineShaderStageCreateInfo[2]){
@@ -349,6 +389,33 @@ int main(int argc, char** argv) {
 			},
 			.pVertexInputState = &(VkPipelineVertexInputStateCreateInfo){
 				.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+				.vertexBindingDescriptionCount = 1,
+				.pVertexBindingDescriptions = &(VkVertexInputBindingDescription){
+					.binding = 0,
+					.stride = sizeof(Vertex),
+					.inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+				},
+				.vertexAttributeDescriptionCount = 3,
+				.pVertexAttributeDescriptions = (VkVertexInputAttributeDescription[3]){
+					{
+						.location = 0,
+						.binding = 0,
+						.format = VK_FORMAT_R32G32B32_SFLOAT,
+						.offset = 0,
+					},
+					{
+						.location = 1,
+						.binding = 0,
+						.format = VK_FORMAT_R32G32B32_SFLOAT,
+						.offset = sizeof(Vector3),
+					},
+					{
+						.location = 2,
+						.binding = 0,
+						.format = VK_FORMAT_R32G32_SFLOAT,
+						.offset = sizeof(Vector3) * 2,
+					},
+				},
 			},
 			.pInputAssemblyState = &(VkPipelineInputAssemblyStateCreateInfo){
 				.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
@@ -387,11 +454,11 @@ int main(int argc, char** argv) {
 					VK_DYNAMIC_STATE_SCISSOR,
 				},
 			},
-			.layout = trianglePipelineLayout,
+			.layout = meshPipelineLayout,
 			.renderPass = renderPass,
-		}, NULL, &trianglePipeline));
+		}, NULL, &meshPipeline));
 	}
-	ASSERT(trianglePipeline != VK_NULL_HANDLE);
+	ASSERT(meshPipeline != VK_NULL_HANDLE);
 
 	VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
 	VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
@@ -427,6 +494,59 @@ int main(int argc, char** argv) {
 		}, &graphicsCommandBuffer));
 	}
 	ASSERT(graphicsCommandBuffer != VK_NULL_HANDLE);
+
+	Mesh mesh = {}; // TODO: Destroy this somewhere
+	{
+		ObjMesh objMesh = {};
+		if (!ObjMesh_Create(&objMesh, "Cube.obj")) {
+			printf("Unable to load Cube.obj\n");
+			return -1;
+		}
+
+		for (u64 i = 0; i < objMesh.FaceCount; i++) {
+			mesh.VertexCount += 3;
+			mesh.Vertices = realloc(mesh.Vertices, mesh.VertexCount * sizeof(mesh.Vertices[0]));
+			ASSERT(mesh.Vertices);
+
+			mesh.Vertices[mesh.VertexCount - 3].Position = objMesh.Positions[objMesh.Faces[i].PositionIndices[0]];
+			mesh.Vertices[mesh.VertexCount - 2].Position = objMesh.Positions[objMesh.Faces[i].PositionIndices[1]];
+			mesh.Vertices[mesh.VertexCount - 1].Position = objMesh.Positions[objMesh.Faces[i].PositionIndices[2]];
+			
+			mesh.Vertices[mesh.VertexCount - 3].Normal = objMesh.Normals[objMesh.Faces[i].NormalIndices[0]];
+			mesh.Vertices[mesh.VertexCount - 2].Normal = objMesh.Normals[objMesh.Faces[i].NormalIndices[1]];
+			mesh.Vertices[mesh.VertexCount - 1].Normal = objMesh.Normals[objMesh.Faces[i].NormalIndices[2]];
+			
+			mesh.Vertices[mesh.VertexCount - 3].TexCoord = objMesh.TexCoords[objMesh.Faces[i].TexCoordIndices[0]];
+			mesh.Vertices[mesh.VertexCount - 2].TexCoord = objMesh.TexCoords[objMesh.Faces[i].TexCoordIndices[1]];
+			mesh.Vertices[mesh.VertexCount - 1].TexCoord = objMesh.TexCoords[objMesh.Faces[i].TexCoordIndices[2]];
+		}
+
+		for (u64 i = 0; i < mesh.VertexCount; i++) {
+			mesh.IndexCount++;
+			mesh.Indices = realloc(mesh.Indices, mesh.IndexCount * sizeof(mesh.Indices[0]));
+			ASSERT(mesh.Indices);
+
+			mesh.Indices[mesh.IndexCount - 1] = i;
+		}
+
+		ObjMesh_Destory(&objMesh);
+	}
+
+	VulkanBuffer vertexBuffer = {};
+	if (!VulkanBuffer_Create(&vertexBuffer, device, physicalDevice, mesh.VertexCount * sizeof(mesh.Vertices[0]), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)) {
+		printf("Unable to create vertex buffer!\n");
+		return -1;
+	}
+
+	memcpy(vertexBuffer.Data, mesh.Vertices, mesh.VertexCount * sizeof(mesh.Vertices[0]));
+
+	VulkanBuffer indexBuffer = {};
+	if (!VulkanBuffer_Create(&indexBuffer, device, physicalDevice, mesh.IndexCount * sizeof(mesh.Indices[0]), VK_BUFFER_USAGE_INDEX_BUFFER_BIT)) {
+		printf("Unable to create index buffer!\n");
+		return -1;
+	}
+
+	memcpy(indexBuffer.Data, mesh.Indices, mesh.IndexCount * sizeof(mesh.Indices[0]));
 
 	while (Window_PollEvents()) {
 		VulkanSwapchain_TryResize(&swapchain);
@@ -507,8 +627,12 @@ int main(int argc, char** argv) {
 			},
 		});
 
-		vkCmdBindPipeline(graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, trianglePipeline);
-		vkCmdDraw(graphicsCommandBuffer, 3, 1, 0, 0);
+		vkCmdBindPipeline(graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
+
+		vkCmdBindVertexBuffers(graphicsCommandBuffer, 0, 1, &vertexBuffer.Buffer, &(VkDeviceSize){ 0 });
+		vkCmdBindIndexBuffer(graphicsCommandBuffer, indexBuffer.Buffer, 0, VK_INDEX_TYPE_UINT32);
+		// vkCmdDraw(graphicsCommandBuffer, 3, 1, 0, 0);
+		vkCmdDrawIndexed(graphicsCommandBuffer, mesh.IndexCount, 1, 0, 0, 0);
 
 		vkCmdEndRenderPass(graphicsCommandBuffer);
 
@@ -566,9 +690,12 @@ int main(int argc, char** argv) {
 
 	VkCall(vkDeviceWaitIdle(device));
 	{
-		vkDestroyPipelineLayout(device, trianglePipelineLayout, NULL);
-		vkDestroyPipelineCache(device, trianglePipelineCache, NULL);
-		vkDestroyPipeline(device, trianglePipeline, NULL);
+		VulkanBuffer_Destroy(&vertexBuffer);
+		VulkanBuffer_Destroy(&indexBuffer);
+
+		vkDestroyPipelineLayout(device, meshPipelineLayout, NULL);
+		vkDestroyPipelineCache(device, meshPipelineCache, NULL);
+		vkDestroyPipeline(device, meshPipeline, NULL);
 
 		vkDestroyShaderModule(device, fragmentShader, NULL);
 		vkDestroyShaderModule(device, vertexShader, NULL);
