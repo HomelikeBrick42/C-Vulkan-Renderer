@@ -178,7 +178,7 @@ int main(int argc, char** argv) {
 	VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
 	{
 		PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT = cast(PFN_vkCreateDebugUtilsMessengerEXT) vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
-		ASSERT(vkCreateDebugReportCallbackEXT);
+		ASSERT(vkCreateDebugUtilsMessengerEXT);
 
 		VkCall(vkCreateDebugUtilsMessengerEXT(instance, &(VkDebugUtilsMessengerCreateInfoEXT){
 			.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -495,7 +495,7 @@ int main(int argc, char** argv) {
 	}
 	ASSERT(graphicsCommandBuffer != VK_NULL_HANDLE);
 
-	Mesh mesh = {}; // TODO: Destroy this somewhere
+	Mesh mesh = {};
 	{
 		ObjMesh objMesh = {};
 		if (!ObjMesh_Create(&objMesh, "Cube.obj")) {
@@ -692,6 +692,14 @@ int main(int argc, char** argv) {
 	{
 		VulkanBuffer_Destroy(&vertexBuffer);
 		VulkanBuffer_Destroy(&indexBuffer);
+
+		if (mesh.Vertices) {
+			free(mesh.Vertices);
+		}
+
+		if (mesh.Indices) {
+			free(mesh.Indices);
+		}
 
 		vkDestroyPipelineLayout(device, meshPipelineLayout, NULL);
 		vkDestroyPipelineCache(device, meshPipelineCache, NULL);
