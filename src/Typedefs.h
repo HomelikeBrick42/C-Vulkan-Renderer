@@ -52,11 +52,3 @@ SIZE_ASSERT(b8,  1);
 SIZE_ASSERT(b32, 4);
 
 #undef SIZE_ASSERT
-
-typedef struct Vector2_t {
-	f32 x, y;
-} Vector2;
-
-typedef struct Vector3_t {
-	f32 x, y, z;
-} Vector3;

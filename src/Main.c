@@ -1,6 +1,8 @@
 #include "Typedefs.h"
 #include "Window.h"
 #include "ObjLoader.h"
+#include "Vector.h"
+#include "Matrix.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,6 +31,9 @@ VkBool32 VKAPI_CALL DebugMessengerCallback(VkDebugUtilsMessageSeverityFlagBitsEX
 		"Unknown Type";
 
 	printf("%s: %s\n", flagString, pCallbackData->pMessage);
+#if defined(_WIN32) || defined(_WIN64)
+	OutputDebugStringA(pCallbackData->pMessage);
+#endif
 
 	ASSERT(!(messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT));
 	return VK_TRUE;
@@ -48,6 +53,12 @@ typedef struct Mesh_t {
 	u32* Indices;
 	u64 IndexCount;
 } Mesh;
+
+typedef struct UniformBuffer_t {
+	Matrix4 ModelMatrix;
+	Matrix4 ViewMatrix;
+	Matrix4 ProjectionMatrix;
+} UniformBuffer;
 
 typedef struct VulkanBuffer_t {
 	VkBuffer Buffer;
@@ -352,10 +363,27 @@ int main(int argc, char** argv) {
 	}
 	ASSERT(fragmentShader != VK_NULL_HANDLE);
 
+	VkDescriptorSetLayout meshDescriptorSetLayout = VK_NULL_HANDLE;
+	{
+		VkCall(vkCreateDescriptorSetLayout(device, &(VkDescriptorSetLayoutCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+			.bindingCount = 1,
+			.pBindings = &(VkDescriptorSetLayoutBinding){
+				.binding = 0,
+				.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				.descriptorCount = 1,
+				.stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+			},
+		}, NULL, &meshDescriptorSetLayout));
+	}
+	ASSERT(meshDescriptorSetLayout != VK_NULL_HANDLE);
+
 	VkPipelineLayout meshPipelineLayout = VK_NULL_HANDLE;
 	{
 		VkCall(vkCreatePipelineLayout(device, &(VkPipelineLayoutCreateInfo){
 			.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+			.setLayoutCount = 1,
+    		.pSetLayouts = &meshDescriptorSetLayout,
 		}, NULL, &meshPipelineLayout));
 	}
 	ASSERT(meshPipelineLayout != VK_NULL_HANDLE);
@@ -495,6 +523,31 @@ int main(int argc, char** argv) {
 	}
 	ASSERT(graphicsCommandBuffer != VK_NULL_HANDLE);
 
+	VkDescriptorPool meshDescriptorPool = VK_NULL_HANDLE;
+	{
+		VkCall(vkCreateDescriptorPool(device, &(VkDescriptorPoolCreateInfo){
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+			.maxSets = 1,
+			.poolSizeCount = 1,
+			.pPoolSizes = &(VkDescriptorPoolSize){
+				.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+				.descriptorCount = 1,
+			},
+		}, NULL, &meshDescriptorPool));
+	}
+	ASSERT(meshDescriptorPool != VK_NULL_HANDLE);
+
+	VkDescriptorSet meshDescriptorSet = VK_NULL_HANDLE;
+	{
+		VkCall(vkAllocateDescriptorSets(device, &(VkDescriptorSetAllocateInfo){
+			.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+			.descriptorPool = meshDescriptorPool,
+			.descriptorSetCount = 1,
+			.pSetLayouts = &meshDescriptorSetLayout,
+		}, &meshDescriptorSet));
+	}
+	ASSERT(meshDescriptorSet != VK_NULL_HANDLE);
+
 	Mesh mesh = {};
 	{
 		ObjMesh objMesh = {};
@@ -548,8 +601,34 @@ int main(int argc, char** argv) {
 
 	memcpy(indexBuffer.Data, mesh.Indices, mesh.IndexCount * sizeof(mesh.Indices[0]));
 
+	VulkanBuffer uniformBuffer = {};
+	if (!VulkanBuffer_Create(&uniformBuffer, device, physicalDevice, sizeof(UniformBuffer), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)) {
+		printf("Unable to create uniform buffer!\n");
+		return -1;
+	}
+
+	UniformBuffer* uniformData = uniformBuffer.Data;
+	uniformData->ModelMatrix = Matrix4_Size((Vector3){ 0.8f, 0.8f, 0.8f });
+	uniformData->ViewMatrix = Matrix4_Identity();
+	uniformData->ProjectionMatrix = Matrix4_Identity();
+
 	while (Window_PollEvents()) {
-		VulkanSwapchain_TryResize(&swapchain);
+		if (VulkanSwapchain_TryResize(&swapchain)) {
+			uniformData->ProjectionMatrix = Matrix4_Identity();
+		}
+
+		vkUpdateDescriptorSets(device, 1, &(VkWriteDescriptorSet){
+			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+			.dstSet = meshDescriptorSet,
+			.dstBinding = 0,
+			.descriptorCount = 1,
+			.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			.pBufferInfo = &(VkDescriptorBufferInfo){
+				.buffer = uniformBuffer.Buffer,
+				.offset = 0,
+				.range = uniformBuffer.Size,
+			},
+		}, 0, NULL);
 
 		u32 swapchainImageIndex = 0;
 		VkCall(vkAcquireNextImageKHR(device, swapchain.Swapchain, ~0ull, imageAvailableSemaphore, NULL, &swapchainImageIndex));
@@ -629,9 +708,9 @@ int main(int argc, char** argv) {
 
 		vkCmdBindPipeline(graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipeline);
 
+		vkCmdBindDescriptorSets(graphicsCommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshPipelineLayout, 0, 1, &meshDescriptorSet, 0, NULL);
 		vkCmdBindVertexBuffers(graphicsCommandBuffer, 0, 1, &vertexBuffer.Buffer, &(VkDeviceSize){ 0 });
 		vkCmdBindIndexBuffer(graphicsCommandBuffer, indexBuffer.Buffer, 0, VK_INDEX_TYPE_UINT32);
-		// vkCmdDraw(graphicsCommandBuffer, 3, 1, 0, 0);
 		vkCmdDrawIndexed(graphicsCommandBuffer, mesh.IndexCount, 1, 0, 0, 0);
 
 		vkCmdEndRenderPass(graphicsCommandBuffer);
@@ -690,6 +769,7 @@ int main(int argc, char** argv) {
 
 	VkCall(vkDeviceWaitIdle(device));
 	{
+		VulkanBuffer_Destroy(&uniformBuffer);
 		VulkanBuffer_Destroy(&vertexBuffer);
 		VulkanBuffer_Destroy(&indexBuffer);
 
@@ -705,12 +785,16 @@ int main(int argc, char** argv) {
 		vkDestroyPipelineCache(device, meshPipelineCache, NULL);
 		vkDestroyPipeline(device, meshPipeline, NULL);
 
+		vkDestroyDescriptorSetLayout(device, meshDescriptorSetLayout, NULL);
+
 		vkDestroyShaderModule(device, fragmentShader, NULL);
 		vkDestroyShaderModule(device, vertexShader, NULL);
 
 		VulkanSwapchain_Destroy(&swapchain);
 
 		vkDestroyRenderPass(device, renderPass, NULL);
+
+		vkDestroyDescriptorPool(device, meshDescriptorPool, NULL);
 
 		vkDestroyCommandPool(device, graphicsCommandPool, NULL);
 

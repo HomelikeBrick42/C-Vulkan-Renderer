@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Typedefs.h"
+#include "Vector.h"
 
 typedef struct ObjMaterial_t {
 	char* Name;
