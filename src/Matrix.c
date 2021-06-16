@@ -12,7 +12,7 @@ Matrix4 Matrix4_Identity() {
 	return result;
 }
 
-Matrix4 Matrix4_Size(Vector3 v) {
+Matrix4 Matrix4_Scale(Vector3 v) {
 	Matrix4 result = (Matrix4){
 		.Data = {
 			{ v.x,  0.0f, 0.0f, 0.0f },

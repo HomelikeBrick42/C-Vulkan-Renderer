@@ -8,4 +8,4 @@ typedef struct Matrix4_t {
 } Matrix4;
 
 Matrix4 Matrix4_Identity();
-Matrix4 Matrix4_Size(Vector3 v);
+Matrix4 Matrix4_Scale(Vector3 v);

@@ -608,7 +608,7 @@ int main(int argc, char** argv) {
 	}
 
 	UniformBuffer* uniformData = uniformBuffer.Data;
-	uniformData->ModelMatrix = Matrix4_Size((Vector3){ 0.8f, 0.8f, 0.8f });
+	uniformData->ModelMatrix = Matrix4_Scale((Vector3){ 0.8f, 0.8f, 0.8f });
 	uniformData->ViewMatrix = Matrix4_Identity();
 	uniformData->ProjectionMatrix = Matrix4_Identity();
 
